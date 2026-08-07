@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import com.household.finance.data.Account
 import com.household.finance.data.Entry
 import com.household.finance.data.Goal
+import com.household.finance.data.Loan
 import com.household.finance.logic.AnomalyFlag
 import com.household.finance.logic.BalanceUpdate
 import com.household.finance.logic.ChatMessage
@@ -33,6 +34,8 @@ fun AiHubScreen(
     entries: List<Entry>,
     goals: List<Goal>,
     accounts: List<Account>,
+    loans: List<Loan>,
+    emergencyFundAmount: Double,
     openAiKey: String,
     categories: List<String>,
     nameMe: String,
@@ -40,7 +43,8 @@ fun AiHubScreen(
     onAddGoal: (Goal) -> Unit,
     onDeleteGoal: (String) -> Unit,
     onAddEntry: (Entry) -> Unit,
-    onSetAccountBalance: (String, Double) -> Unit
+    onSetAccountBalance: (String, Double) -> Unit,
+    onAddLoan: (lender: String, borrower: String, amount: Double, note: String) -> Unit
 ) {
     var tab by remember { mutableStateOf(AiTab.CHAT) }
 
@@ -60,7 +64,10 @@ fun AiHubScreen(
         Spacer(Modifier.height(14.dp))
 
         when (tab) {
-            AiTab.CHAT -> ChatPane(entries, accounts, categories, nameMe, nameWife, openAiKey, onAddEntry, onSetAccountBalance, onAddGoal)
+            AiTab.CHAT -> ChatPane(
+                entries, accounts, goals, loans, emergencyFundAmount, categories, nameMe, nameWife,
+                openAiKey, onAddEntry, onSetAccountBalance, onAddGoal, onAddLoan
+            )
             AiTab.BUDGET -> BudgetPane(entries, openAiKey)
             AiTab.ANOMALIES -> AnomaliesPane(entries, openAiKey)
             AiTab.GOALS -> GoalsPane(goals, openAiKey, onAddGoal, onDeleteGoal)
@@ -88,19 +95,24 @@ private sealed class ChatBubble {
     data class AddedEntry(val entry: Entry) : ChatBubble()
     data class AppliedBalance(val update: BalanceUpdate) : ChatBubble()
     data class AddedGoal(val goal: Goal) : ChatBubble()
+    data class AddedLoan(val loan: Loan) : ChatBubble()
 }
 
 @Composable
 private fun ChatPane(
     entries: List<Entry>,
     accounts: List<Account>,
+    goals: List<Goal>,
+    loans: List<Loan>,
+    emergencyFundAmount: Double,
     categories: List<String>,
     nameMe: String,
     nameWife: String,
     apiKey: String,
     onAddEntry: (Entry) -> Unit,
     onSetAccountBalance: (String, Double) -> Unit,
-    onAddGoal: (Goal) -> Unit
+    onAddGoal: (Goal) -> Unit,
+    onAddLoan: (lender: String, borrower: String, amount: Double, note: String) -> Unit
 ) {
     var input by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
@@ -117,7 +129,9 @@ private fun ChatPane(
         loading = true
         error = null
         Thread {
-            val result = runCatching { FinanceAi.chat(question, history.toList(), entries, accounts, categories, nameMe, nameWife, apiKey) }
+            val result = runCatching {
+                FinanceAi.chat(question, history.toList(), entries, accounts, goals, loans, emergencyFundAmount, categories, nameMe, nameWife, apiKey)
+            }
             result.onSuccess { r ->
                 when {
                     r.draftEntry != null -> {
@@ -134,6 +148,11 @@ private fun ChatPane(
                         onAddGoal(r.goalDraft)
                         bubbles.add(ChatBubble.AddedGoal(r.goalDraft))
                         history.add(ChatMessage("assistant", "Goal added."))
+                    }
+                    r.loanDraft != null -> {
+                        onAddLoan(r.loanDraft.lender, r.loanDraft.borrower, r.loanDraft.amount, r.loanDraft.note)
+                        bubbles.add(ChatBubble.AddedLoan(r.loanDraft))
+                        history.add(ChatMessage("assistant", "IOU recorded."))
                     }
                     r.replyText != null -> {
                         bubbles.add(ChatBubble.Text("assistant", r.replyText))
@@ -152,7 +171,8 @@ private fun ChatPane(
                 Text(
                     "Type \"22k emi\" and it's logged instantly under your name as Personal — say \"joint\" if it's shared. " +
                         "\"22k emi from icici\" also updates that account's balance. \"sbi balance is 50k\" sets a balance directly. " +
-                        "\"add goal to buy a car in 2027 jan with down payment 100000\" plans a goal. Or just ask a question.",
+                        "\"add goal to buy a car in 2027 jan with down payment 100000\" plans a goal. " +
+                        "\"gave ${nameWife} 2k\" records an IOU. Or just ask a question — I can see all your entries, goals, and IOUs.",
                     style = MaterialTheme.typography.bodySmall
                 )
             }
@@ -201,6 +221,14 @@ private fun ChatPane(
                                     "${formatInr(bubble.goal.monthlyContribution)}/mo for ${bubble.goal.targetMonths} months → ${formatInr(bubble.goal.targetAmount)}",
                                     style = MaterialTheme.typography.bodySmall
                                 )
+                            }
+                        }
+                    }
+                    is ChatBubble.AddedLoan -> {
+                        GlassSurface(modifier = Modifier.fillMaxWidth()) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("✅", modifier = Modifier.padding(end = 8.dp))
+                                Text("${bubble.loan.borrower} owes ${bubble.loan.lender} ${formatInr(bubble.loan.amount)}", color = Positive)
                             }
                         }
                     }

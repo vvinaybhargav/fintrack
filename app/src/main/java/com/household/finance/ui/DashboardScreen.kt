@@ -24,6 +24,7 @@ import com.household.finance.data.Bucket
 import com.household.finance.data.CategoryListLength
 import com.household.finance.data.Entry
 import com.household.finance.data.Goal
+import com.household.finance.data.Loan
 import com.household.finance.data.PolicyStatus
 import com.household.finance.data.categoriesFor
 import com.household.finance.logic.Calculations
@@ -58,11 +59,14 @@ fun DashboardScreen(
     entries: List<Entry>,
     accounts: List<Account>,
     goals: List<Goal>,
+    loans: List<Loan>,
     categoryLength: CategoryListLength,
     emergencyFundAmount: Double,
     nameMe: String,
     onSetEmergencyFund: (Double) -> Unit,
-    onSetAccountBalance: (String, Double) -> Unit
+    onSetAccountBalance: (String, Double) -> Unit,
+    onSetGoalCompleted: (String, Boolean) -> Unit,
+    onSetLoanSettled: (String, Boolean) -> Unit
 ) {
     var view by remember { mutableStateOf(DashboardView.PERSONAL) }
     var efInput by remember(emergencyFundAmount) { mutableStateOf(emergencyFundAmount.toInt().toString()) }
@@ -94,6 +98,11 @@ fun DashboardScreen(
             if (amount <= 0.0) null else cat to amount
         }
     }
+    // Only unsettled loans, split by which side of the loan this profile is on.
+    val owedToMe = remember(loans, nameMe) { loans.filter { !it.settled && it.lender == nameMe } }
+    val iOwe = remember(loans, nameMe) { loans.filter { !it.settled && it.borrower == nameMe } }
+    val activeGoals = remember(goals) { goals.filter { !it.completed } }
+    val completedGoals = remember(goals) { goals.filter { it.completed } }
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
@@ -144,21 +153,57 @@ fun DashboardScreen(
             }
         }
 
+        if (owedToMe.isNotEmpty() || iOwe.isNotEmpty()) {
+            item {
+                GlassSurface(modifier = Modifier.fillMaxWidth()) {
+                    Column {
+                        Text("IOUs", style = MaterialTheme.typography.labelLarge)
+                        Spacer(Modifier.height(10.dp))
+                        owedToMe.forEach { loan ->
+                            LoanRow(text = "${loan.borrower} owes you ${formatInr(loan.amount)}", accent = Positive, note = loan.note) {
+                                onSetLoanSettled(loan.id, true)
+                            }
+                        }
+                        iOwe.forEach { loan ->
+                            LoanRow(text = "You owe ${loan.lender} ${formatInr(loan.amount)}", accent = Warning, note = loan.note) {
+                                onSetLoanSettled(loan.id, true)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         if (goals.isNotEmpty()) {
             item {
                 GlassSurface(modifier = Modifier.fillMaxWidth()) {
                     Column {
                         Text("GOALS", style = MaterialTheme.typography.labelLarge)
                         Spacer(Modifier.height(10.dp))
-                        goals.forEach { goal ->
+                        activeGoals.forEach { goal ->
                             val progress = if (goal.targetAmount > 0) (goal.savedSoFar / goal.targetAmount).coerceIn(0.0, 1.0) else 0.0
                             Column(Modifier.padding(bottom = 10.dp)) {
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                     Text(goal.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                                     Text(formatInr(goal.savedSoFar) + " / " + formatInr(goal.targetAmount), style = MaterialTheme.typography.bodySmall)
                                 }
                                 Spacer(Modifier.height(6.dp))
                                 LinearProgressIndicator(progress = { progress.toFloat() }, modifier = Modifier.fillMaxWidth().height(5.dp))
+                                Spacer(Modifier.height(4.dp))
+                                TextButton(onClick = { onSetGoalCompleted(goal.id, true) }) { Text("Mark as reached") }
+                            }
+                        }
+                        if (completedGoals.isNotEmpty()) {
+                            Text("REACHED", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 4.dp))
+                            completedGoals.forEach { goal ->
+                                Row(
+                                    Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("✅ ${goal.title}", style = MaterialTheme.typography.bodyMedium, color = Positive)
+                                    TextButton(onClick = { onSetGoalCompleted(goal.id, false) }) { Text("Undo") }
+                                }
                             }
                         }
                         Text("Manage goals from the AI tab.", style = MaterialTheme.typography.bodySmall)
@@ -331,6 +376,19 @@ private fun HeroStat(label: String, value: String, accent: Color, modifier: Modi
             Text(label, style = MaterialTheme.typography.labelLarge)
             Spacer(Modifier.height(4.dp))
             Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = accent)
+        }
+    }
+}
+
+@Composable
+private fun LoanRow(text: String, accent: Color, note: String, onSettle: () -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text(text, color = accent, fontWeight = FontWeight.SemiBold)
+            TextButton(onClick = onSettle) { Text("Settle") }
+        }
+        if (note.isNotBlank()) {
+            Text(note, style = MaterialTheme.typography.bodySmall)
         }
     }
 }

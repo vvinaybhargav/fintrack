@@ -9,6 +9,8 @@ import com.household.finance.data.EmergencyFund
 import com.household.finance.data.Entry
 import com.household.finance.data.FirestoreFinanceRepository
 import com.household.finance.data.Goal
+import com.household.finance.data.Loan
+import com.household.finance.data.Profile
 import com.household.finance.logic.Calculations
 import com.household.finance.logic.DashboardSummary
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,12 +32,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val _summary = MutableStateFlow(Calculations.summarize(emptyList()))
     val summary: StateFlow<DashboardSummary> = _summary.asStateFlow()
 
-    private val _nameMe = MutableStateFlow("Me")
-    val nameMe: StateFlow<String> = _nameMe.asStateFlow()
-
-    private val _nameWife = MutableStateFlow("Wife")
-    val nameWife: StateFlow<String> = _nameWife.asStateFlow()
-
     private val _firestoreReady = MutableStateFlow(false)
     val firestoreReady: StateFlow<Boolean> = _firestoreReady.asStateFlow()
 
@@ -45,15 +41,32 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val _accounts = MutableStateFlow<List<Account>>(emptyList())
     val accounts: StateFlow<List<Account>> = _accounts.asStateFlow()
 
+    private val _loans = MutableStateFlow<List<Loan>>(emptyList())
+    val loans: StateFlow<List<Loan>> = _loans.asStateFlow()
+
+    /** The two household profiles (e.g. Vinnu, Rukmini), shared via Firestore. */
+    private val _profiles = MutableStateFlow<List<Profile>>(emptyList())
+    val profiles: StateFlow<List<Profile>> = _profiles.asStateFlow()
+
     private val _refreshing = MutableStateFlow(false)
     val refreshing: StateFlow<Boolean> = _refreshing.asStateFlow()
 
+    /** Currently signed-in profile name on this device, or null before one is chosen. */
+    private val _currentProfile = MutableStateFlow<String?>(null)
+    val currentProfile: StateFlow<String?> = _currentProfile.asStateFlow()
+
+    /** Convenience: the current profile's name, or "" until one is chosen. */
+    private val _nameMe = MutableStateFlow("")
+    val nameMe: StateFlow<String> = _nameMe.asStateFlow()
+
+    private var profilesEnsured = false
+
     init {
         viewModelScope.launch {
-            settings.nameMeFlow.collect { _nameMe.value = it }
-        }
-        viewModelScope.launch {
-            settings.nameWifeFlow.collect { _nameWife.value = it }
+            settings.currentProfileFlow.collect {
+                _currentProfile.value = it
+                _nameMe.value = it ?: ""
+            }
         }
         viewModelScope.launch {
             settings.firebaseConfigFlow.collect { config ->
@@ -75,21 +88,59 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     launch {
                         repository.observeAccounts().collect { _accounts.value = it }
                     }
+                    launch {
+                        repository.observeLoans().collect { _loans.value = it }
+                    }
+                    launch {
+                        repository.observeProfiles().collect { list ->
+                            _profiles.value = list
+                            if (list.isEmpty() && !profilesEnsured) {
+                                profilesEnsured = true
+                                repository.saveProfile(Profile(name = "Vinnu", pin = ""))
+                                repository.saveProfile(Profile(name = "Rukmini", pin = ""))
+                            }
+                        }
+                    }
                 }
             }
         }
     }
 
+    /** Name of the other profile relative to whoever is currently signed in. */
+    fun otherProfileName(): String =
+        profiles.value.map { it.name }.firstOrNull { it != _currentProfile.value } ?: ""
+
+    /** Signs in as [name] on this device. If [remember] is true, this device skips the PIN for it going forward. */
+    fun selectProfile(name: String, remember: Boolean) {
+        viewModelScope.launch {
+            settings.setCurrentProfile(name)
+            if (remember) settings.trustProfile(name)
+        }
+    }
+
+    fun setDefaultProfile(name: String) {
+        viewModelScope.launch { settings.setDefaultProfile(name) }
+    }
+
+    /** Returns to the profile picker without losing this device's default/trusted state. */
+    fun switchProfile() {
+        viewModelScope.launch { settings.clearCurrentProfile() }
+    }
+
+    fun setProfilePin(name: String, pin: String) {
+        viewModelScope.launch { repository.saveProfile(Profile(name = name, pin = pin)) }
+    }
+
     /**
-     * Adding a NEW entry (no id yet) is always attributed to this device's own identity
-     * (nameMe) — never the partner's, regardless of what the caller passed in. If tagged with
+     * Adding a NEW entry (no id yet) is always attributed to whoever is currently signed in on
+     * this device — never the partner's, regardless of what the caller passed in. If tagged with
      * an account, applies its signed amount to that account's balance atomically (creating the
      * account at 0 first if new). Edits to existing entries keep whatever person was set on them.
      */
     fun addEntry(entry: Entry) {
         viewModelScope.launch {
             val isNew = entry.id.isBlank()
-            val toSave = if (isNew) entry.copy(person = _nameMe.value) else entry
+            val toSave = if (isNew) entry.copy(person = _currentProfile.value ?: entry.person) else entry
             repository.addEntry(toSave)
             if (isNew && !toSave.accountName.isNullOrBlank()) {
                 repository.adjustAccountBalance(toSave.accountName, toSave.signedAccountAmount)
@@ -130,5 +181,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteGoal(id: String) {
         viewModelScope.launch { repository.deleteGoal(id) }
+    }
+
+    fun setGoalCompleted(id: String, completed: Boolean) {
+        viewModelScope.launch { repository.setGoalCompleted(id, completed) }
+    }
+
+    fun addLoan(lender: String, borrower: String, amount: Double, note: String) {
+        viewModelScope.launch { repository.addLoan(Loan(lender = lender, borrower = borrower, amount = amount, note = note)) }
+    }
+
+    fun setLoanSettled(id: String, settled: Boolean) {
+        viewModelScope.launch { repository.setLoanSettled(id, settled) }
     }
 }

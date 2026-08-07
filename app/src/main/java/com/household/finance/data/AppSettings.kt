@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -12,14 +13,17 @@ import kotlinx.coroutines.flow.map
 private val Context.dataStore by preferencesDataStore(name = "household_finance_settings")
 
 /**
- * Local-only settings: this device's identity (person names), Firebase config, and the OpenAI key.
- * Firebase config + OpenAI key are stored ONLY on-device (never written to Firestore).
+ * Local-only settings: this device's active/default/trusted profile, Firebase config, and the
+ * OpenAI key. Firebase config + OpenAI key are stored ONLY on-device (never written to Firestore).
+ * Profile identity (name + PIN) itself lives in Firestore - see [Profile] - so it's shared across
+ * both phones; only which profile this particular device currently trusts/defaults to is local.
  */
 class AppSettings(private val context: Context) {
 
     private object Keys {
-        val NAME_ME = stringPreferencesKey("name_me")
-        val NAME_WIFE = stringPreferencesKey("name_wife")
+        val CURRENT_PROFILE = stringPreferencesKey("current_profile")
+        val DEFAULT_PROFILE = stringPreferencesKey("default_profile")
+        val TRUSTED_PROFILES = stringSetPreferencesKey("trusted_profiles")
         val FB_API_KEY = stringPreferencesKey("fb_api_key")
         val FB_APP_ID = stringPreferencesKey("fb_app_id")
         val FB_PROJECT_ID = stringPreferencesKey("fb_project_id")
@@ -30,14 +34,39 @@ class AppSettings(private val context: Context) {
         val SALARY_CREDIT_DATE = intPreferencesKey("salary_credit_date")
     }
 
-    val nameMeFlow: Flow<String> = context.dataStore.data.map { it[Keys.NAME_ME] ?: "Me" }
-    val nameWifeFlow: Flow<String> = context.dataStore.data.map { it[Keys.NAME_WIFE] ?: "Wife" }
+    /** The profile currently signed in on this device, or null if none has been chosen yet. */
+    val currentProfileFlow: Flow<String?> = context.dataStore.data.map { it[Keys.CURRENT_PROFILE] }
+    /** Which profile auto-signs-in on launch without a PIN prompt. */
+    val defaultProfileFlow: Flow<String?> = context.dataStore.data.map { it[Keys.DEFAULT_PROFILE] }
+    /** Profiles that skip the PIN prompt on this device (the default is always included). */
+    val trustedProfilesFlow: Flow<Set<String>> = context.dataStore.data.map { it[Keys.TRUSTED_PROFILES] ?: emptySet() }
+
     val openAiKeyFlow: Flow<String> = context.dataStore.data.map { it[Keys.OPENAI_KEY] ?: "" }
     val categoryLengthFlow: Flow<CategoryListLength> = context.dataStore.data.map {
         runCatching { CategoryListLength.valueOf(it[Keys.CATEGORY_LENGTH] ?: "MEDIUM") }.getOrDefault(CategoryListLength.MEDIUM)
     }
-    /** Day of month (1-31) this device owner's salary is credited, or null if not set. */
+    /** Day of month (1-31) this profile's salary is credited, or null if not set. */
     val salaryCreditDateFlow: Flow<Int?> = context.dataStore.data.map { it[Keys.SALARY_CREDIT_DATE] }
+
+    suspend fun setCurrentProfile(name: String) {
+        context.dataStore.edit { it[Keys.CURRENT_PROFILE] = name }
+    }
+
+    /** Used by "Switch Profile" in Settings to return to the picker without losing default/trust state. */
+    suspend fun clearCurrentProfile() {
+        context.dataStore.edit { it.remove(Keys.CURRENT_PROFILE) }
+    }
+
+    suspend fun setDefaultProfile(name: String) {
+        context.dataStore.edit {
+            it[Keys.DEFAULT_PROFILE] = name
+            it[Keys.TRUSTED_PROFILES] = (it[Keys.TRUSTED_PROFILES] ?: emptySet()) + name
+        }
+    }
+
+    suspend fun trustProfile(name: String) {
+        context.dataStore.edit { it[Keys.TRUSTED_PROFILES] = (it[Keys.TRUSTED_PROFILES] ?: emptySet()) + name }
+    }
 
     suspend fun saveCategoryLength(length: CategoryListLength) {
         context.dataStore.edit { it[Keys.CATEGORY_LENGTH] = length.name }
@@ -71,13 +100,6 @@ class AppSettings(private val context: Context) {
     }
 
     suspend fun currentFirebaseConfig(): FirebaseConfig = firebaseConfigFlow.first()
-
-    suspend fun saveNames(me: String, wife: String) {
-        context.dataStore.edit {
-            it[Keys.NAME_ME] = me
-            it[Keys.NAME_WIFE] = wife
-        }
-    }
 
     suspend fun saveOpenAiKey(key: String) {
         context.dataStore.edit { it[Keys.OPENAI_KEY] = key }

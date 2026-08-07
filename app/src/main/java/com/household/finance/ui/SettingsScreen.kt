@@ -2,10 +2,13 @@ package com.household.finance.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.household.finance.data.AppSettings
 import com.household.finance.data.CategoryListLength
@@ -15,21 +18,23 @@ import com.household.finance.ui.theme.Positive
 @Composable
 fun SettingsScreen(
     nameMe: String,
-    nameWife: String,
+    isDefaultProfile: Boolean,
     openAiKey: String,
     firebaseConfig: AppSettings.FirebaseConfig,
     firestoreReady: Boolean,
     categoryLength: CategoryListLength,
     salaryCreditDate: Int?,
-    onSaveNames: (String, String) -> Unit,
+    onSwitchProfile: () -> Unit,
+    onSetDefaultProfile: () -> Unit,
+    onChangePin: (String) -> Unit,
     onSaveOpenAiKey: (String) -> Unit,
     onSaveFirebaseConfig: (AppSettings.FirebaseConfig) -> Unit,
     onSaveCategoryLength: (CategoryListLength) -> Unit,
     onSaveSalaryCreditDate: (Int?) -> Unit
 ) {
-    var meField by remember(nameMe) { mutableStateOf(nameMe) }
-    var wifeField by remember(nameWife) { mutableStateOf(nameWife) }
     var salaryDateField by remember(salaryCreditDate) { mutableStateOf(salaryCreditDate?.toString() ?: "") }
+    var newPin by remember { mutableStateOf("") }
+    var pinSaved by remember { mutableStateOf(false) }
 
     // One comma-separated field: apiKey,appId,projectId,storageBucket,messagingSenderId,openAiKey
     var combinedConfig by remember(firebaseConfig, openAiKey) {
@@ -48,15 +53,36 @@ fun SettingsScreen(
     ) {
         GlassSurface(modifier = Modifier.fillMaxWidth()) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("HOUSEHOLD", style = MaterialTheme.typography.labelLarge)
-                Text(
-                    "\"Your name\" is this device's identity — every entry you add is automatically logged under it. " +
-                        "Enter your own name here and your partner's name in the other field; on your partner's phone it's the other way round.",
-                    style = MaterialTheme.typography.bodySmall
+                Text("PROFILE", style = MaterialTheme.typography.labelLarge)
+                Text("Signed in as $nameMe" + if (isDefaultProfile) " (default on this device)" else "", style = MaterialTheme.typography.bodyMedium)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = onSwitchProfile) { Text("Switch Profile") }
+                    if (!isDefaultProfile) {
+                        OutlinedButton(onClick = onSetDefaultProfile) { Text("Make Default") }
+                    }
+                }
+
+                Divider(Modifier.padding(vertical = 4.dp))
+
+                Text("Change PIN for $nameMe", style = MaterialTheme.typography.bodyMedium)
+                OutlinedTextField(
+                    value = newPin,
+                    onValueChange = { if (it.length <= 4) { newPin = it.filter { c -> c.isDigit() }; pinSaved = false } },
+                    label = { Text("New 4-digit PIN") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(0.6f)
                 )
-                OutlinedTextField(value = meField, onValueChange = { meField = it }, label = { Text("Your name") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = wifeField, onValueChange = { wifeField = it }, label = { Text("Partner's name") }, modifier = Modifier.fillMaxWidth())
-                Button(onClick = { onSaveNames(meField, wifeField) }) { Text("Save Names") }
+                Button(
+                    onClick = { onChangePin(newPin); pinSaved = true; newPin = "" },
+                    enabled = newPin.length == 4
+                ) { Text("Save PIN") }
+                if (pinSaved) {
+                    Text("PIN updated.", color = Positive, style = MaterialTheme.typography.bodySmall)
+                }
+
+                Divider(Modifier.padding(vertical = 4.dp))
 
                 Text("Salary credit date", style = MaterialTheme.typography.labelLarge)
                 Text("Day of the month your salary is usually credited (1-31), for reference.", style = MaterialTheme.typography.bodySmall)
@@ -74,7 +100,7 @@ fun SettingsScreen(
         GlassSurface(modifier = Modifier.fillMaxWidth()) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("CATEGORY LIST LENGTH", style = MaterialTheme.typography.labelLarge)
-                Text("Controls how many categories show up in the Add screen's dropdown.", style = MaterialTheme.typography.bodySmall)
+                Text("Controls how many categories show up on the dashboard and in entries.", style = MaterialTheme.typography.bodySmall)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     CategoryListLength.entries.forEach { length ->
                         FilterChip(

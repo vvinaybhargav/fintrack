@@ -2,6 +2,7 @@ package com.household.finance.logic
 
 import com.household.finance.data.Entry
 import com.household.finance.data.Goal
+import com.household.finance.data.Loan
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -16,12 +17,13 @@ data class ChatMessage(val role: String, val content: String) // role: "user" or
 
 data class AnomalyFlag(val entryId: String, val label: String, val reason: String)
 
-/** Either a plain answer, a parsed transaction, a direct balance statement, or a new savings goal. */
+/** Either a plain answer, a parsed transaction, a direct balance statement, a new savings goal, or a loan. */
 data class ChatResult(
     val replyText: String?,
     val draftEntry: Entry?,
     val balanceUpdate: BalanceUpdate? = null,
-    val goalDraft: Goal? = null
+    val goalDraft: Goal? = null,
+    val loanDraft: Loan? = null
 )
 
 data class BalanceUpdate(val account: String, val balance: Double)
@@ -91,6 +93,9 @@ object FinanceAi {
         history: List<ChatMessage>,
         entries: List<Entry>,
         accounts: List<com.household.finance.data.Account>,
+        goals: List<Goal>,
+        loans: List<Loan>,
+        emergencyFundAmount: Double,
         categories: List<String>,
         nameMe: String,
         nameWife: String,
@@ -98,10 +103,17 @@ object FinanceAi {
     ): ChatResult {
         val accountsDigest = if (accounts.isEmpty()) "No accounts tracked yet." else
             accounts.joinToString(", ") { "${it.name}: ₹${it.balance.toInt()}" }
+        val goalsDigest = if (goals.isEmpty()) "No goals set." else
+            goals.joinToString("; ") { "${it.title}: ₹${it.savedSoFar.toInt()}/₹${it.targetAmount.toInt()} saved, ₹${it.monthlyContribution.toInt()}/mo, ${it.targetMonths}mo plan${if (it.completed) " (REACHED)" else ""}" }
+        val loansDigest = if (loans.isEmpty()) "No IOUs." else
+            loans.joinToString("; ") { "${it.lender} lent ${it.borrower} ₹${it.amount.toInt()}${if (it.settled) " (settled)" else " (outstanding)"}" }
 
         val system = """
             You are a household budgeting assistant for an Indian married couple using an app called
-            Household Finance. Amounts are in INR.
+            Household Finance, currently talking to $nameMe (their partner is $nameWife). Amounts are in INR.
+            You have access to all of the household's entries, goals, IOUs, account balances, and the
+            emergency fund - use them freely to answer questions. You do NOT have access to Firebase or
+            OpenAI keys in Settings, and never need them.
 
             If the user's latest message is REPORTING A NEW TRANSACTION (an expense, income, or saving —
             e.g. "paid 22k emi", "22k emi from icici", "20k rd"), reply with ONLY a single line:
@@ -119,9 +131,17 @@ object FinanceAi {
             figure yourself (that's done in code, not by you):
             GOAL:{"title":"short name","targetAmount":number,"targetMonth":1-12,"targetYear":number,"note":"short string"}
 
-            For any of these three cases: no prose, no markdown fences, just that one line.
+            If the user's latest message describes LENDING OR GIVING MONEY TO THEIR PARTNER (e.g. "gave
+            $nameWife 2k", "lent $nameWife 2000 for groceries") - meaning $nameWife now owes $nameMe - reply
+            with ONLY a single line:
+            LOAN:{"amount":number,"note":"short string"}
+            (the lender is always the person chatting, the borrower is always their partner - don't ask, just extract the amount)
 
-            Otherwise, answer the user's question using ONLY the data below — never invent numbers.
+            For any of these four cases: no prose, no markdown fences, just that one line.
+
+            Otherwise, answer the user's question using ONLY the data below — never invent numbers. You can
+            do arithmetic/projections over this data (e.g. "how much can I save by July if my rent goes up
+            5k" - compute using current income/expense figures plus the hypothetical).
             Be concise (2-5 sentences), warm, neutral, never judgmental about spending choices.
             If the data doesn't cover the question, say so plainly.
 
@@ -130,6 +150,14 @@ object FinanceAi {
 
             Current account balances:
             $accountsDigest
+
+            Emergency fund: ₹${emergencyFundAmount.toInt()}
+
+            Goals:
+            $goalsDigest
+
+            IOUs:
+            $loansDigest
         """.trimIndent()
 
         val historyText = history.takeLast(6).joinToString("\n") { "${it.role}: ${it.content}" }
@@ -188,6 +216,18 @@ object FinanceAi {
                 )
             }.getOrNull()
             if (parsed != null) return ChatResult(null, null, null, parsed)
+        }
+
+        if (raw.startsWith("LOAN:")) {
+            val jsonText = raw.removePrefix("LOAN:").trim()
+                .removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
+            val parsed = runCatching {
+                val json = JSONObject(jsonText)
+                val amount = json.optDouble("amount", Double.NaN)
+                if (amount.isNaN() || amount <= 0) return@runCatching null
+                Loan(lender = nameMe, borrower = nameWife, amount = amount, note = json.optString("note", question))
+            }.getOrNull()
+            if (parsed != null) return ChatResult(null, null, null, null, parsed)
         }
 
         return ChatResult(raw, null)

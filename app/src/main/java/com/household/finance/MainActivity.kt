@@ -25,6 +25,7 @@ import com.household.finance.ui.AiHubScreen
 import com.household.finance.ui.AppViewModel
 import com.household.finance.ui.DashboardScreen
 import com.household.finance.ui.EntriesScreen
+import com.household.finance.ui.ProfileGateScreen
 import com.household.finance.ui.SettingsScreen
 import com.household.finance.ui.theme.GlassBackdrop
 import com.household.finance.ui.theme.HouseholdFinanceTheme
@@ -61,6 +62,25 @@ private val tabs = listOf(
 
 @Composable
 private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
+    val profiles by viewModel.profiles.collectAsStateWithLifecycle()
+    val currentProfile by viewModel.currentProfile.collectAsStateWithLifecycle()
+    val trustedProfiles by viewModel.settings.trustedProfilesFlow.collectAsStateWithLifecycle(initialValue = emptySet())
+    var manuallyUnlocked by remember { mutableStateOf(false) }
+
+    val isTrusted = currentProfile != null && currentProfile in trustedProfiles
+    val unlocked = currentProfile != null && (isTrusted || manuallyUnlocked)
+
+    if (!unlocked) {
+        ProfileGateScreen(
+            profiles = profiles,
+            onSelectProfile = { name, rememberDevice -> viewModel.selectProfile(name, rememberDevice) },
+            onSetPin = { name, pin -> viewModel.setProfilePin(name, pin) },
+            onSetDefault = { name -> viewModel.setDefaultProfile(name) },
+            onSignedIn = { manuallyUnlocked = true }
+        )
+        return
+    }
+
     val navController = rememberNavController()
     val context = androidx.compose.ui.platform.LocalContext.current
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -71,13 +91,15 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
     val emergencyFund by viewModel.emergencyFund.collectAsStateWithLifecycle()
     val goals by viewModel.goals.collectAsStateWithLifecycle()
     val accounts by viewModel.accounts.collectAsStateWithLifecycle()
+    val loans by viewModel.loans.collectAsStateWithLifecycle()
     val nameMe by viewModel.nameMe.collectAsStateWithLifecycle()
-    val nameWife by viewModel.nameWife.collectAsStateWithLifecycle()
+    val nameWife = profiles.map { it.name }.firstOrNull { it != nameMe } ?: ""
     val openAiKey by viewModel.settings.openAiKeyFlow.collectAsStateWithLifecycle(initialValue = "")
     val firebaseConfig by viewModel.settings.firebaseConfigFlow.collectAsStateWithLifecycle(
         initialValue = com.household.finance.data.AppSettings.FirebaseConfig()
     )
     val firestoreReady by viewModel.firestoreReady.collectAsStateWithLifecycle()
+    val defaultProfile by viewModel.settings.defaultProfileFlow.collectAsStateWithLifecycle(initialValue = null)
     val scope = rememberCoroutineScope()
 
     var editingEntry by remember { mutableStateOf<Entry?>(null) }
@@ -121,11 +143,14 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                     entries = entries,
                     accounts = accounts,
                     goals = goals,
+                    loans = loans,
                     categoryLength = categoryLength,
                     emergencyFundAmount = emergencyFund.currentAmount,
                     nameMe = nameMe,
                     onSetEmergencyFund = { viewModel.setEmergencyFund(it) },
-                    onSetAccountBalance = { name, balance -> viewModel.setAccountBalance(name, balance) }
+                    onSetAccountBalance = { name, balance -> viewModel.setAccountBalance(name, balance) },
+                    onSetGoalCompleted = { id, completed -> viewModel.setGoalCompleted(id, completed) },
+                    onSetLoanSettled = { id, settled -> viewModel.setLoanSettled(id, settled) }
                 )
             }
             composable("add") {
@@ -166,6 +191,8 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                     entries = entries,
                     goals = goals,
                     accounts = accounts,
+                    loans = loans,
+                    emergencyFundAmount = emergencyFund.currentAmount,
                     openAiKey = openAiKey,
                     categories = com.household.finance.data.categoriesFor(categoryLength),
                     nameMe = nameMe,
@@ -173,7 +200,8 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                     onAddGoal = { viewModel.addGoal(it) },
                     onDeleteGoal = { viewModel.deleteGoal(it) },
                     onAddEntry = { viewModel.addEntry(it) },
-                    onSetAccountBalance = { name, balance -> viewModel.setAccountBalance(name, balance) }
+                    onSetAccountBalance = { name, balance -> viewModel.setAccountBalance(name, balance) },
+                    onAddLoan = { lender, borrower, amount, note -> viewModel.addLoan(lender, borrower, amount, note) }
                 )
             }
             composable("settings") {
@@ -183,13 +211,15 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                 val salaryCreditDate by viewModel.settings.salaryCreditDateFlow.collectAsStateWithLifecycle(initialValue = null)
                 SettingsScreen(
                     nameMe = nameMe,
-                    nameWife = nameWife,
+                    isDefaultProfile = defaultProfile == nameMe,
                     openAiKey = openAiKey,
                     firebaseConfig = firebaseConfig,
                     firestoreReady = firestoreReady,
                     categoryLength = categoryLength,
                     salaryCreditDate = salaryCreditDate,
-                    onSaveNames = { me, wife -> scope.launch { viewModel.settings.saveNames(me, wife) } },
+                    onSwitchProfile = { manuallyUnlocked = false; viewModel.switchProfile() },
+                    onSetDefaultProfile = { viewModel.setDefaultProfile(nameMe) },
+                    onChangePin = { pin -> viewModel.setProfilePin(nameMe, pin) },
                     onSaveOpenAiKey = { key -> scope.launch { viewModel.settings.saveOpenAiKey(key) } },
                     onSaveFirebaseConfig = { config -> scope.launch { viewModel.settings.saveFirebaseConfig(config) } },
                     onSaveSalaryCreditDate = { day -> scope.launch { viewModel.settings.saveSalaryCreditDate(day) } },

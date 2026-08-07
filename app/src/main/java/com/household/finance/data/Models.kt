@@ -88,6 +88,7 @@ data class Goal(
     val targetMonths: Int = 1,
     val monthlyContribution: Double = 0.0,
     val savedSoFar: Double = 0.0,
+    val completed: Boolean = false,
     val createdAt: Long = System.currentTimeMillis()
 ) {
     fun toMap(): Map<String, Any?> = mapOf(
@@ -96,6 +97,7 @@ data class Goal(
         "targetMonths" to targetMonths,
         "monthlyContribution" to monthlyContribution,
         "savedSoFar" to savedSoFar,
+        "completed" to completed,
         "createdAt" to createdAt
     )
 
@@ -107,7 +109,57 @@ data class Goal(
             targetMonths = (map["targetMonths"] as? Number)?.toInt() ?: 1,
             monthlyContribution = (map["monthlyContribution"] as? Number)?.toDouble() ?: 0.0,
             savedSoFar = (map["savedSoFar"] as? Number)?.toDouble() ?: 0.0,
+            completed = map["completed"] as? Boolean ?: false,
             createdAt = (map["createdAt"] as? Number)?.toLong() ?: 0L
+        )
+    }
+}
+
+/** A peer-to-peer loan between the two profiles - lender's dashboard shows a receivable, borrower's shows a payable. */
+data class Loan(
+    val id: String = "",
+    val lender: String = "",
+    val borrower: String = "",
+    val amount: Double = 0.0,
+    val note: String = "",
+    val settled: Boolean = false,
+    val createdAt: Long = System.currentTimeMillis()
+) {
+    fun toMap(): Map<String, Any?> = mapOf(
+        "lender" to lender,
+        "borrower" to borrower,
+        "amount" to amount,
+        "note" to note,
+        "settled" to settled,
+        "createdAt" to createdAt
+    )
+
+    companion object {
+        fun fromMap(id: String, map: Map<String, Any?>): Loan = Loan(
+            id = id,
+            lender = map["lender"] as? String ?: "",
+            borrower = map["borrower"] as? String ?: "",
+            amount = (map["amount"] as? Number)?.toDouble() ?: 0.0,
+            note = map["note"] as? String ?: "",
+            settled = map["settled"] as? Boolean ?: false,
+            createdAt = (map["createdAt"] as? Number)?.toLong() ?: 0L
+        )
+    }
+}
+
+/** One of the two household profiles. PIN is shared via Firestore so either phone can switch to either profile. */
+data class Profile(
+    val name: String = "",
+    val pin: String = "",
+    val updatedAt: Long = System.currentTimeMillis()
+) {
+    fun toMap(): Map<String, Any?> = mapOf("name" to name, "pin" to pin, "updatedAt" to updatedAt)
+
+    companion object {
+        fun fromMap(id: String, map: Map<String, Any?>): Profile = Profile(
+            name = map["name"] as? String ?: id,
+            pin = map["pin"] as? String ?: "",
+            updatedAt = (map["updatedAt"] as? Number)?.toLong() ?: 0L
         )
     }
 }

@@ -31,6 +31,13 @@ interface FinanceRepository {
     suspend fun setAccountBalance(name: String, balance: Double)
     /** Atomic +/- applied when a transaction is tagged with an account (creates the account at 0 first if new). */
     suspend fun adjustAccountBalance(name: String, delta: Double)
+    suspend fun setGoalCompleted(id: String, completed: Boolean)
+    fun observeLoans(): Flow<List<Loan>>
+    suspend fun addLoan(loan: Loan)
+    suspend fun setLoanSettled(id: String, settled: Boolean)
+    /** Shared across both phones so either can switch to either profile with the same PIN. */
+    fun observeProfiles(): Flow<List<Profile>>
+    suspend fun saveProfile(profile: Profile)
     fun isReady(): Boolean
 }
 
@@ -83,6 +90,12 @@ class FirestoreFinanceRepository(private val context: Context) : FinanceReposito
 
     private fun accountsCollection() =
         firestore?.collection("workspaces")?.document(WORKSPACE_ID)?.collection("accounts")
+
+    private fun loansCollection() =
+        firestore?.collection("workspaces")?.document(WORKSPACE_ID)?.collection("loans")
+
+    private fun profilesCollection() =
+        firestore?.collection("workspaces")?.document(WORKSPACE_ID)?.collection("profiles")
 
     /** Normalizes an account name to a stable doc id so "icici"/"ICICI"/"Icici" all resolve to one account. */
     private fun accountDocId(name: String) =
@@ -164,6 +177,56 @@ class FirestoreFinanceRepository(private val context: Context) : FinanceReposito
 
     override suspend fun deleteGoal(id: String) {
         goalsCollection()?.document(id)?.delete()
+    }
+
+    override suspend fun setGoalCompleted(id: String, completed: Boolean) {
+        goalsCollection()?.document(id)?.set(mapOf("completed" to completed), SetOptions.merge())
+    }
+
+    override fun observeLoans(): Flow<List<Loan>> = callbackFlow {
+        val col = loansCollection()
+        if (col == null) {
+            trySend(emptyList())
+            awaitClose { }
+            return@callbackFlow
+        }
+        val registration = col.addSnapshotListener { snapshot, _ ->
+            val list = snapshot?.documents?.mapNotNull { doc ->
+                doc.data?.let { Loan.fromMap(doc.id, it) }
+            } ?: emptyList()
+            trySend(list.sortedByDescending { it.createdAt })
+        }
+        awaitClose { registration.remove() }
+    }
+
+    override suspend fun addLoan(loan: Loan) {
+        val col = loansCollection() ?: return
+        col.document().set(loan.toMap())
+    }
+
+    override suspend fun setLoanSettled(id: String, settled: Boolean) {
+        loansCollection()?.document(id)?.set(mapOf("settled" to settled), SetOptions.merge())
+    }
+
+    override fun observeProfiles(): Flow<List<Profile>> = callbackFlow {
+        val col = profilesCollection()
+        if (col == null) {
+            trySend(emptyList())
+            awaitClose { }
+            return@callbackFlow
+        }
+        val registration = col.addSnapshotListener { snapshot, _ ->
+            val list = snapshot?.documents?.mapNotNull { doc ->
+                doc.data?.let { Profile.fromMap(doc.id, it) }
+            } ?: emptyList()
+            trySend(list.sortedBy { it.name })
+        }
+        awaitClose { registration.remove() }
+    }
+
+    override suspend fun saveProfile(profile: Profile) {
+        val col = profilesCollection() ?: return
+        col.document(profile.name.trim().uppercase()).set(profile.toMap(), SetOptions.merge())
     }
 
     override fun observeAccounts(): Flow<List<Account>> = callbackFlow {
