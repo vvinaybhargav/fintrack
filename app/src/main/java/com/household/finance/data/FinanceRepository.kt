@@ -47,6 +47,10 @@ interface FinanceRepository {
      *  writes an initial doc (tagged to [owner]) or increments an existing one (owner untouched).
      *  Deliberately avoids Firestore transactions here, which don't reliably commit offline. */
     suspend fun adjustAccountBalance(name: String, delta: Double, owner: String, isNewAccount: Boolean)
+    /** Renames an account and re-tags every entry referencing it (batched). Balance/owner carry over. */
+    suspend fun renameAccount(oldName: String, newName: String)
+    /** Stops tracking this account. Entries that referenced it keep their historical accountName as-is. */
+    suspend fun deleteAccount(name: String)
     suspend fun setGoalCompleted(id: String, completed: Boolean)
     suspend fun addGoalContribution(id: String, amount: Double)
     fun observeLoans(): Flow<List<Loan>>
@@ -351,5 +355,19 @@ class FirestoreFinanceRepository(private val context: Context) : FinanceReposito
             mapOf("savedSoFar" to FieldValue.increment(amount)),
             SetOptions.merge()
         )
+    }
+
+    override suspend fun renameAccount(oldName: String, newName: String) {
+        val db = firestore ?: return
+        val col = accountsCollection() ?: return
+        val oldDoc = col.document(accountDocId(oldName)).get().awaitTask()
+        val oldAccount = oldDoc.data?.let { Account.fromMap(oldDoc.id, it) } ?: return
+        col.document(accountDocId(newName)).set(oldAccount.copy(name = newName.trim().uppercase()).toMap()).awaitTask()
+        renameFieldInCollection(db, entriesCollection(), "accountName", oldAccount.name, newName.trim().uppercase())
+        col.document(accountDocId(oldName)).delete().awaitTask()
+    }
+
+    override suspend fun deleteAccount(name: String) {
+        accountsCollection()?.document(accountDocId(name))?.delete()
     }
 }

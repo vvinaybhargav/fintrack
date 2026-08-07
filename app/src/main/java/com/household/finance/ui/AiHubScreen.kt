@@ -48,7 +48,7 @@ fun AiHubScreen(
     onDeleteEntry: (String) -> Unit,
     onEditEntry: (Entry) -> Unit,
     onSetAccountBalance: (String, Double) -> Unit,
-    onAddLoan: (lender: String, borrower: String, amount: Double, note: String) -> Unit,
+    onAddLoan: (lender: String, borrower: String, amount: Double, note: String, accountName: String?) -> Unit,
     onDeleteLoan: (String) -> Unit,
     onAddGoalContribution: (String, Double) -> Unit
 ) {
@@ -127,7 +127,7 @@ private fun ChatPane(
     onSetAccountBalance: (String, Double) -> Unit,
     onAddGoal: (Goal) -> Unit,
     onDeleteGoal: (String) -> Unit,
-    onAddLoan: (lender: String, borrower: String, amount: Double, note: String) -> Unit,
+    onAddLoan: (lender: String, borrower: String, amount: Double, note: String, accountName: String?) -> Unit,
     onDeleteLoan: (String) -> Unit
 ) {
     var input by remember { mutableStateOf("") }
@@ -166,7 +166,7 @@ private fun ChatPane(
                         history.add(ChatMessage("assistant", "Goal added."))
                     }
                     r.loanDraft != null -> {
-                        onAddLoan(r.loanDraft.lender, r.loanDraft.borrower, r.loanDraft.amount, r.loanDraft.note)
+                        onAddLoan(r.loanDraft.lender, r.loanDraft.borrower, r.loanDraft.amount, r.loanDraft.note, r.loanDraft.accountName)
                         bubbles.add(ChatBubble.AddedLoan(r.loanDraft))
                         history.add(ChatMessage("assistant", "IOU recorded."))
                     }
@@ -509,7 +509,7 @@ private fun GoalsPane(
                             TextButton(onClick = { onDeleteGoal(goal.id) }) { Text("Remove") }
                         }
                         Text(
-                            "${formatInr(goal.savedSoFar)} / ${formatInr(goal.targetAmount)} · ${formatInr(goal.monthlyContribution)}/mo for ${goal.targetMonths} months",
+                            "${formatInr(goal.savedSoFar)} / ${formatInr(goal.targetAmount)} · ${formatInr(com.household.finance.logic.Calculations.goalMonthlyNeeded(goal))}/mo · ${com.household.finance.logic.Calculations.goalMonthsRemaining(goal)} months left",
                             style = MaterialTheme.typography.bodySmall
                         )
                         Spacer(Modifier.height(8.dp))

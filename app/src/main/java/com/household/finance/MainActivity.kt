@@ -167,6 +167,8 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                     nameMe = nameMe,
                     onSetEmergencyFund = { viewModel.setEmergencyFund(it) },
                     onSetAccountBalance = { name, balance -> viewModel.setAccountBalance(name, balance) },
+                    onRenameAccount = { old, new -> viewModel.renameAccount(old, new) },
+                    onDeleteAccount = { viewModel.deleteAccount(it) },
                     onSetGoalCompleted = { id, completed -> viewModel.setGoalCompleted(id, completed) },
                     onAddGoalContribution = { id, amount -> viewModel.addGoalContribution(id, amount) },
                     onSetLoanSettled = { id, settled -> viewModel.setLoanSettled(id, settled) }
@@ -223,7 +225,7 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                     onDeleteEntry = { viewModel.deleteEntry(it) },
                     onEditEntry = { viewModel.addEntry(it) },
                     onSetAccountBalance = { name, balance -> viewModel.setAccountBalance(name, balance) },
-                    onAddLoan = { lender, borrower, amount, note -> viewModel.addLoan(lender, borrower, amount, note) },
+                    onAddLoan = { lender, borrower, amount, note, accountName -> viewModel.addLoan(lender, borrower, amount, note, accountName) },
                     onDeleteLoan = { viewModel.deleteLoan(it) },
                     onAddGoalContribution = { id, amount -> viewModel.addGoalContribution(id, amount) }
                 )

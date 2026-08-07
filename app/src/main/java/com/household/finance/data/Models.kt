@@ -88,10 +88,15 @@ data class Goal(
     val id: String = "",
     val title: String = "",
     val targetAmount: Double = 0.0,
+    /** Legacy fixed months-at-creation, kept for goals saved before target dates were tracked. */
     val targetMonths: Int = 1,
+    /** Legacy fixed monthly figure computed at creation; prefer the live recompute in Calculations. */
     val monthlyContribution: Double = 0.0,
     val savedSoFar: Double = 0.0,
     val completed: Boolean = false,
+    /** Actual calendar target, if known - lets "months remaining" count down instead of staying fixed. */
+    val targetMonth: Int? = null,
+    val targetYear: Int? = null,
     /** Profile that created this goal; blank means "existed before ownership was tracked" - visible to everyone. */
     val owner: String = "",
     val createdAt: Long = System.currentTimeMillis()
@@ -103,6 +108,8 @@ data class Goal(
         "monthlyContribution" to monthlyContribution,
         "savedSoFar" to savedSoFar,
         "completed" to completed,
+        "targetMonth" to targetMonth,
+        "targetYear" to targetYear,
         "owner" to owner,
         "createdAt" to createdAt
     )
@@ -116,6 +123,8 @@ data class Goal(
             monthlyContribution = (map["monthlyContribution"] as? Number)?.toDouble() ?: 0.0,
             savedSoFar = (map["savedSoFar"] as? Number)?.toDouble() ?: 0.0,
             completed = map["completed"] as? Boolean ?: false,
+            targetMonth = (map["targetMonth"] as? Number)?.toInt(),
+            targetYear = (map["targetYear"] as? Number)?.toInt(),
             owner = map["owner"] as? String ?: "",
             createdAt = (map["createdAt"] as? Number)?.toLong() ?: 0L
         )
@@ -130,6 +139,9 @@ data class Loan(
     val amount: Double = 0.0,
     val note: String = "",
     val settled: Boolean = false,
+    /** Which of the lender's accounts the money actually left from, if mentioned - debited when the
+     *  loan is created, credited back when it's settled, so balances stay honest either way. */
+    val accountName: String? = null,
     val createdAt: Long = System.currentTimeMillis()
 ) {
     fun toMap(): Map<String, Any?> = mapOf(
@@ -138,6 +150,7 @@ data class Loan(
         "amount" to amount,
         "note" to note,
         "settled" to settled,
+        "accountName" to accountName,
         "createdAt" to createdAt
     )
 
@@ -149,6 +162,7 @@ data class Loan(
             amount = (map["amount"] as? Number)?.toDouble() ?: 0.0,
             note = map["note"] as? String ?: "",
             settled = map["settled"] as? Boolean ?: false,
+            accountName = map["accountName"] as? String,
             createdAt = (map["createdAt"] as? Number)?.toLong() ?: 0L
         )
     }

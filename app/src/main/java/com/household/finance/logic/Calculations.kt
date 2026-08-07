@@ -3,6 +3,7 @@ package com.household.finance.logic
 import com.household.finance.data.Bucket
 import com.household.finance.data.Entry
 import com.household.finance.data.EntryType
+import com.household.finance.data.Goal
 import com.household.finance.data.INVESTMENT_CATEGORIES
 import com.household.finance.data.PolicyStatus
 import com.household.finance.data.RECURRING_CATEGORIES
@@ -84,6 +85,26 @@ object Calculations {
             year - currentYear <= 1 -> PolicyStatus.NEAR_MATURITY
             else -> PolicyStatus.ACTIVE
         }
+    }
+
+    /**
+     * Months remaining, computed LIVE against today's date - not the fixed count stored at creation.
+     * Falls back to the stored [Goal.targetMonths] for goals saved before target dates were tracked.
+     */
+    fun goalMonthsRemaining(goal: Goal): Int {
+        val month = goal.targetMonth
+        val year = goal.targetYear
+        if (month == null || year == null) return goal.targetMonths.coerceAtLeast(1)
+        val now = Calendar.getInstance()
+        val currentTotal = now.get(Calendar.YEAR) * 12 + (now.get(Calendar.MONTH) + 1)
+        val targetTotal = year * 12 + month.coerceIn(1, 12)
+        return (targetTotal - currentTotal).coerceAtLeast(1)
+    }
+
+    /** What's needed per month to hit the goal from here, given what's left to save and months remaining. */
+    fun goalMonthlyNeeded(goal: Goal): Double {
+        val remaining = (goal.targetAmount - goal.savedSoFar).coerceAtLeast(0.0)
+        return remaining / goalMonthsRemaining(goal)
     }
 
     /** Rule-based nudge: category up X% vs its rolling average of the prior N months' entries of the same category. */

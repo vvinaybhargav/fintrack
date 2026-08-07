@@ -140,10 +140,11 @@ object FinanceAi {
             GOAL:{"title":"short name","targetAmount":number,"targetMonth":1-12,"targetYear":number,"note":"short string"}
 
             If the user's latest message describes LENDING OR GIVING MONEY TO THEIR PARTNER (e.g. "gave
-            $nameWife 2k", "lent $nameWife 2000 for groceries") - meaning $nameWife now owes $nameMe - reply
+            $nameWife 2k", "lent $nameWife 2000 from icici") - meaning $nameWife now owes $nameMe - reply
             with ONLY a single line:
-            LOAN:{"amount":number,"note":"short string"}
-            (the lender is always the person chatting, the borrower is always their partner - don't ask, just extract the amount)
+            LOAN:{"amount":number,"note":"short string","account":"bank/account name if mentioned, else null"}
+            (the lender is always the person chatting, the borrower is always their partner - don't ask, just extract the amount.
+            If an account is given, that account is debited now and credited back when the loan is settled.)
 
             If the user's latest message asks to DELETE an entry, goal, or IOU (e.g. "delete the car goal",
             "remove that EMI entry", "delete the loan to $nameWife"), find the best-matching item by its id in
@@ -235,7 +236,9 @@ object FinanceAi {
                     title = json.optString("title", question.take(40)),
                     targetAmount = targetAmount,
                     targetMonths = months,
-                    monthlyContribution = (targetAmount / months)
+                    monthlyContribution = (targetAmount / months),
+                    targetMonth = targetMonth,
+                    targetYear = targetYear
                 )
             }.getOrNull()
             if (parsed != null) return ChatResult(null, null, null, parsed)
@@ -248,7 +251,13 @@ object FinanceAi {
                 val json = JSONObject(jsonText)
                 val amount = json.optDouble("amount", Double.NaN)
                 if (amount.isNaN() || amount <= 0) return@runCatching null
-                Loan(lender = nameMe, borrower = nameWife, amount = amount, note = json.optString("note", question))
+                Loan(
+                    lender = nameMe,
+                    borrower = nameWife,
+                    amount = amount,
+                    note = json.optString("note", question),
+                    accountName = json.optString("account", "").ifBlank { null }.takeIf { it != "null" }
+                )
             }.getOrNull()
             if (parsed != null) return ChatResult(null, null, null, null, parsed)
         }
@@ -358,13 +367,16 @@ object FinanceAi {
         val json = JSONObject(content)
         val targetMonth = if (json.isNull("targetMonth")) -1 else json.optInt("targetMonth", -1)
         val targetYear = if (json.isNull("targetYear")) -1 else json.optInt("targetYear", -1)
-        val months = if (targetMonth in 1..12 && targetYear >= 2000) monthsUntilInclusive(targetMonth, targetYear) else 12
+        val hasTargetDate = targetMonth in 1..12 && targetYear >= 2000
+        val months = if (hasTargetDate) monthsUntilInclusive(targetMonth, targetYear) else 12
         val targetAmount = json.optDouble("targetAmount", 0.0)
         return Goal(
             title = json.optString("title", description.take(40)),
             targetAmount = targetAmount,
             targetMonths = months,
-            monthlyContribution = if (months > 0) targetAmount / months else 0.0
+            monthlyContribution = if (months > 0) targetAmount / months else 0.0,
+            targetMonth = if (hasTargetDate) targetMonth else null,
+            targetYear = if (hasTargetDate) targetYear else null
         )
     }
 }

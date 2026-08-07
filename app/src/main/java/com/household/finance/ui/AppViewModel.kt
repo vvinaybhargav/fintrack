@@ -176,6 +176,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { repository.setAccountBalance(name, balance) }
     }
 
+    fun renameAccount(oldName: String, newName: String) {
+        val trimmed = newName.trim()
+        if (trimmed.isBlank() || trimmed.equals(oldName, ignoreCase = true)) return
+        viewModelScope.launch { repository.renameAccount(oldName, trimmed) }
+    }
+
+    fun deleteAccount(name: String) {
+        viewModelScope.launch { repository.deleteAccount(name) }
+    }
+
     /** Deleting an account-tagged entry reverses its effect on that account's balance. */
     fun deleteEntry(id: String) {
         viewModelScope.launch {
@@ -220,12 +230,31 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { repository.addGoalContribution(id, amount) }
     }
 
-    fun addLoan(lender: String, borrower: String, amount: Double, note: String) {
-        viewModelScope.launch { repository.addLoan(Loan(lender = lender, borrower = borrower, amount = amount, note = note)) }
+    /**
+     * If [accountName] is given, that's the lender's account the money actually left from - debited
+     * now (a real cash outflow), credited back automatically when the loan is later marked settled.
+     */
+    fun addLoan(lender: String, borrower: String, amount: Double, note: String, accountName: String? = null) {
+        viewModelScope.launch {
+            repository.addLoan(Loan(lender = lender, borrower = borrower, amount = amount, note = note, accountName = accountName))
+            if (!accountName.isNullOrBlank()) {
+                val isNewAccount = _accounts.value.none { it.name.equals(accountName, ignoreCase = true) }
+                repository.adjustAccountBalance(accountName, -amount, lender, isNewAccount)
+            }
+        }
     }
 
+    /** Settling a tagged loan credits the money back to the account it left from; un-settling reverses that. */
     fun setLoanSettled(id: String, settled: Boolean) {
-        viewModelScope.launch { repository.setLoanSettled(id, settled) }
+        viewModelScope.launch {
+            val loan = _loans.value.find { it.id == id }
+            repository.setLoanSettled(id, settled)
+            val accountName = loan?.accountName
+            if (loan != null && !accountName.isNullOrBlank()) {
+                val delta = if (settled) loan.amount else -loan.amount
+                repository.adjustAccountBalance(accountName, delta, loan.lender, isNewAccount = false)
+            }
+        }
     }
 
     fun deleteLoan(id: String) {

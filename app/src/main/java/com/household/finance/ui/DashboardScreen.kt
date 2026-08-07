@@ -65,6 +65,8 @@ fun DashboardScreen(
     nameMe: String,
     onSetEmergencyFund: (Double) -> Unit,
     onSetAccountBalance: (String, Double) -> Unit,
+    onRenameAccount: (String, String) -> Unit,
+    onDeleteAccount: (String) -> Unit,
     onSetGoalCompleted: (String, Boolean) -> Unit,
     onAddGoalContribution: (String, Double) -> Unit,
     onSetLoanSettled: (String, Boolean) -> Unit
@@ -148,7 +150,12 @@ fun DashboardScreen(
             item {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(accounts, key = { it.name }) { account ->
-                        BalanceChip(account = account, onSave = { onSetAccountBalance(account.name, it) })
+                        BalanceChip(
+                            account = account,
+                            onSave = { onSetAccountBalance(account.name, it) },
+                            onRename = { newName -> onRenameAccount(account.name, newName) },
+                            onDelete = { onDeleteAccount(account.name) }
+                        )
                     }
                 }
             }
@@ -397,7 +404,7 @@ private fun MiniStat(label: String, value: String) {
 }
 
 @Composable
-private fun BalanceChip(account: Account, onSave: (Double) -> Unit) {
+private fun BalanceChip(account: Account, onSave: (Double) -> Unit, onRename: (String) -> Unit, onDelete: () -> Unit) {
     var editing by remember { mutableStateOf(false) }
 
     GlassSurface(
@@ -412,6 +419,8 @@ private fun BalanceChip(account: Account, onSave: (Double) -> Unit) {
             BalanceEditForm(
                 account = account,
                 onSave = { onSave(it); editing = false },
+                onRename = { onRename(it); editing = false },
+                onDelete = { onDelete(); editing = false },
                 onCancel = { editing = false }
             )
         } else {
@@ -433,8 +442,17 @@ private fun BalanceChip(account: Account, onSave: (Double) -> Unit) {
  * edit session, right as the field mounts - a top-level effect with a delay hack was unreliable.
  */
 @Composable
-private fun BalanceEditForm(account: Account, onSave: (Double) -> Unit, onCancel: () -> Unit) {
+private fun BalanceEditForm(
+    account: Account,
+    onSave: (Double) -> Unit,
+    onRename: (String) -> Unit,
+    onDelete: () -> Unit,
+    onCancel: () -> Unit
+) {
     var input by remember { mutableStateOf(if (account.balance == 0.0) "" else account.balance.toInt().toString()) }
+    var renaming by remember { mutableStateOf(false) }
+    var confirmingDelete by remember { mutableStateOf(false) }
+    var nameInput by remember { mutableStateOf(account.name) }
     val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
     val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
 
@@ -444,18 +462,43 @@ private fun BalanceEditForm(account: Account, onSave: (Double) -> Unit, onCancel
     }
 
     Column {
-        Text(account.name, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(6.dp))
-        OutlinedTextField(
-            value = input,
-            onValueChange = { input = it.filter { c -> c.isDigit() || c == '-' } },
-            singleLine = true,
-            modifier = Modifier.width(120.dp).focusRequester(focusRequester)
-        )
-        Spacer(Modifier.height(4.dp))
-        Row {
-            TextButton(onClick = { onSave(input.toDoubleOrNull() ?: account.balance) }) { Text("Save") }
-            TextButton(onClick = onCancel) { Text("Cancel") }
+        if (renaming) {
+            OutlinedTextField(
+                value = nameInput,
+                onValueChange = { nameInput = it },
+                label = { Text("New name") },
+                singleLine = true,
+                modifier = Modifier.width(140.dp)
+            )
+            Spacer(Modifier.height(4.dp))
+            Row {
+                TextButton(onClick = { if (nameInput.isNotBlank()) onRename(nameInput) }) { Text("Save") }
+                TextButton(onClick = { renaming = false }) { Text("Cancel") }
+            }
+        } else if (confirmingDelete) {
+            Text("Delete ${account.name}?", style = MaterialTheme.typography.bodySmall)
+            Text("Past entries keep their history.", style = MaterialTheme.typography.bodySmall)
+            Spacer(Modifier.height(4.dp))
+            Row {
+                TextButton(onClick = onDelete) { Text("Delete") }
+                TextButton(onClick = { confirmingDelete = false }) { Text("Cancel") }
+            }
+        } else {
+            Text(account.name, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(6.dp))
+            OutlinedTextField(
+                value = input,
+                onValueChange = { input = it.filter { c -> c.isDigit() || c == '-' } },
+                singleLine = true,
+                modifier = Modifier.width(120.dp).focusRequester(focusRequester)
+            )
+            Spacer(Modifier.height(4.dp))
+            Row { TextButton(onClick = { onSave(input.toDoubleOrNull() ?: account.balance) }) { Text("Save") } }
+            Row {
+                TextButton(onClick = { renaming = true }) { Text("Rename") }
+                TextButton(onClick = { confirmingDelete = true }) { Text("Delete") }
+                TextButton(onClick = onCancel) { Text("Close") }
+            }
         }
     }
 }
@@ -472,6 +515,11 @@ private fun GoalRow(goal: Goal, onAddContribution: (Double) -> Unit, onMarkReach
         }
         Spacer(Modifier.height(6.dp))
         LinearProgressIndicator(progress = { progress.toFloat() }, modifier = Modifier.fillMaxWidth().height(5.dp))
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "${formatInr(Calculations.goalMonthlyNeeded(goal))}/mo to stay on track · ${Calculations.goalMonthsRemaining(goal)} months left",
+            style = MaterialTheme.typography.bodySmall
+        )
         Spacer(Modifier.height(4.dp))
         if (adding) {
             GoalContributionForm(
