@@ -346,17 +346,6 @@ private fun MiniStat(label: String, value: String) {
 @Composable
 private fun BalanceChip(account: Account, onSave: (Double) -> Unit) {
     var editing by remember { mutableStateOf(false) }
-    var input by remember(account.balance, editing) { mutableStateOf(account.balance.toInt().toString()) }
-    val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
-    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
-
-    LaunchedEffect(editing) {
-        if (editing) {
-            kotlinx.coroutines.delay(50) // let the field enter composition before focusing it
-            focusRequester.requestFocus()
-            keyboardController?.show()
-        }
-    }
 
     GlassSurface(
         modifier = Modifier
@@ -367,21 +356,11 @@ private fun BalanceChip(account: Account, onSave: (Double) -> Unit) {
         contentPadding = 12
     ) {
         if (editing) {
-            Column {
-                Text(account.name, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(6.dp))
-                OutlinedTextField(
-                    value = input,
-                    onValueChange = { input = it.filter { c -> c.isDigit() || c == '-' } },
-                    singleLine = true,
-                    modifier = Modifier.width(120.dp).focusRequester(focusRequester)
-                )
-                Spacer(Modifier.height(4.dp))
-                TextButton(onClick = {
-                    onSave(input.toDoubleOrNull() ?: account.balance)
-                    editing = false
-                }) { Text("Save") }
-            }
+            BalanceEditForm(
+                account = account,
+                onSave = { onSave(it); editing = false },
+                onCancel = { editing = false }
+            )
         } else {
             Column {
                 Text(account.name, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
@@ -392,6 +371,38 @@ private fun BalanceChip(account: Account, onSave: (Double) -> Unit) {
                     color = if (account.balance < 0) Warning else Positive
                 )
             }
+        }
+    }
+}
+
+/**
+ * Separate composable so it's only entered (and its LaunchedEffect fires) exactly once per
+ * edit session, right as the field mounts - a top-level effect with a delay hack was unreliable.
+ */
+@Composable
+private fun BalanceEditForm(account: Account, onSave: (Double) -> Unit, onCancel: () -> Unit) {
+    var input by remember { mutableStateOf(if (account.balance == 0.0) "" else account.balance.toInt().toString()) }
+    val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+        keyboardController?.show()
+    }
+
+    Column {
+        Text(account.name, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(6.dp))
+        OutlinedTextField(
+            value = input,
+            onValueChange = { input = it.filter { c -> c.isDigit() || c == '-' } },
+            singleLine = true,
+            modifier = Modifier.width(120.dp).focusRequester(focusRequester)
+        )
+        Spacer(Modifier.height(4.dp))
+        Row {
+            TextButton(onClick = { onSave(input.toDoubleOrNull() ?: account.balance) }) { Text("Save") }
+            TextButton(onClick = onCancel) { Text("Cancel") }
         }
     }
 }
