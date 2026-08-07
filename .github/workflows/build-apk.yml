@@ -2,7 +2,11 @@ name: Build APK
 
 on:
   push:
+    branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -28,9 +32,25 @@ jobs:
       - name: Build debug APK
         run: gradle assembleDebug --no-daemon --stacktrace
 
+      - name: Rename APK (versioned + a permanent "latest" filename)
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/household-finance-${GITHUB_SHA::7}.apk
+          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/household-finance-latest.apk
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: household-finance-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+      - name: Publish/update "latest" GitHub Release with the APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest build (${{ github.sha }})
+          body: |
+            Automatically built from the latest push to main.
+            Permanent download link (always the newest build): household-finance-latest.apk
+          prerelease: true
+          files: app/build/outputs/apk/debug/household-finance-*.apk

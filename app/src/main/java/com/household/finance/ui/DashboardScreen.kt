@@ -120,7 +120,7 @@ fun DashboardScreen(
             }
         }
 
-        val recurring = remember(entries) { Calculations.recurringCommitments(entries) }
+        val recurring = Calculations.recurringCommitments(entries)
         if (recurring.isNotEmpty()) {
             item {
                 GlassSurface(modifier = Modifier.fillMaxWidth()) {
