@@ -32,9 +32,11 @@ jobs:
       - name: Build debug APK
         run: gradle assembleDebug --no-daemon --stacktrace
 
-      - name: Rename APK (versioned + a permanent "latest" filename)
+      - name: Rename APK (timestamped copy for history + a permanent "latest" filename)
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/household-finance-${GITHUB_SHA::7}.apk
+          STAMP=$(date -u +%Y-%m-%d_%H%M)
+          echo "STAMP=$STAMP" >> "$GITHUB_ENV"
+          cp app/build/outputs/apk/debug/app-debug.apk "app/build/outputs/apk/debug/household-finance-${STAMP}.apk"
           cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/household-finance-latest.apk
 
       - name: Upload APK artifact
@@ -48,9 +50,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          name: Latest build (${{ github.sha }})
+          name: Latest build (${{ env.STAMP }} UTC)
           body: |
             Automatically built from the latest push to main.
-            Permanent download link (always the newest build): household-finance-latest.apk
+            Permanent download link (always the newest build, same URL every time):
+            https://github.com/${{ github.repository }}/releases/download/latest/household-finance-latest.apk
           prerelease: true
           files: app/build/outputs/apk/debug/household-finance-*.apk
