@@ -81,16 +81,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Adding a NEW entry (no id yet) tagged with an account applies its signed amount to that
-     * account's balance atomically — creating the account at 0 first if it doesn't exist yet.
-     * Edits to existing entries do not re-adjust the balance (correct it manually if needed).
+     * Adding a NEW entry (no id yet) is always attributed to this device's own identity
+     * (nameMe) — never the partner's, regardless of what the caller passed in. If tagged with
+     * an account, applies its signed amount to that account's balance atomically (creating the
+     * account at 0 first if new). Edits to existing entries keep whatever person was set on them.
      */
     fun addEntry(entry: Entry) {
         viewModelScope.launch {
             val isNew = entry.id.isBlank()
-            repository.addEntry(entry)
-            if (isNew && !entry.accountName.isNullOrBlank()) {
-                repository.adjustAccountBalance(entry.accountName, entry.signedAccountAmount)
+            val toSave = if (isNew) entry.copy(person = _nameMe.value) else entry
+            repository.addEntry(toSave)
+            if (isNew && !toSave.accountName.isNullOrBlank()) {
+                repository.adjustAccountBalance(toSave.accountName, toSave.signedAccountAmount)
             }
         }
     }
@@ -99,8 +101,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { repository.setAccountBalance(name, balance) }
     }
 
+    /** Deleting an account-tagged entry reverses its effect on that account's balance. */
     fun deleteEntry(id: String) {
-        viewModelScope.launch { repository.deleteEntry(id) }
+        viewModelScope.launch {
+            val entry = _entries.value.find { it.id == id }
+            repository.deleteEntry(id)
+            if (entry != null && !entry.accountName.isNullOrBlank()) {
+                repository.adjustAccountBalance(entry.accountName, -entry.signedAccountAmount)
+            }
+        }
     }
 
     fun refreshEntries() {

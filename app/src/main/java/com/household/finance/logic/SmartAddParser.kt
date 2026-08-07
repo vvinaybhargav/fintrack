@@ -13,7 +13,11 @@ import org.json.JSONObject
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
-/** Parses natural-language smart-add text into a draft Entry. Never saves directly — caller always confirms. */
+/**
+ * Parses natural-language smart-add text into a draft Entry. `person` is always the device's
+ * own identity (nameMe) — this app never lets one phone log an entry as the other partner.
+ * Bucket defaults to PERSONAL unless the text explicitly says "joint".
+ */
 object SmartAddParser {
 
     private val client = OkHttpClient.Builder()
@@ -36,12 +40,6 @@ object SmartAddParser {
         val lower = text.lowercase(Locale.ROOT)
 
         val amount = extractAmount(lower)
-
-        val person = when {
-            lower.contains(nameWife.lowercase(Locale.ROOT)) || lower.contains("wife") -> nameWife
-            lower.contains(nameMe.lowercase(Locale.ROOT)) || lower.contains(" me ") || lower.startsWith("me ") -> nameMe
-            else -> nameMe
-        }
 
         val category = categories.firstOrNull { lower.contains(it.lowercase(Locale.ROOT)) }
             ?: when {
@@ -66,15 +64,11 @@ object SmartAddParser {
 
         val frequency = if (annualKeywords.any { lower.contains(it) }) Frequency.ANNUAL else Frequency.MONTHLY
 
-        val bucket = when {
-            lower.contains("personal") -> if (person == nameWife) Bucket.PERSONAL_WIFE else Bucket.PERSONAL_ME
-            category in setOf("Music Classes") -> if (person == nameWife) Bucket.PERSONAL_WIFE else Bucket.PERSONAL_ME
-            lower.contains("parents") -> if (person == nameWife) Bucket.PERSONAL_WIFE else Bucket.PERSONAL_ME
-            else -> Bucket.JOINT
-        }
+        // Personal by default; only Joint if explicitly said - no confirmation asked either way.
+        val bucket = if (lower.contains("joint")) Bucket.JOINT else Bucket.PERSONAL
 
         return Entry(
-            person = person,
+            person = nameMe,
             type = type,
             bucket = bucket,
             category = category,
@@ -99,13 +93,14 @@ object SmartAddParser {
 
     /**
      * Optional AI-assisted parse via OpenAI gpt-4o-mini. Throws on any failure;
-     * caller should catch and fall back to [parseRuleBased].
+     * caller should catch and fall back to [parseRuleBased]. `person` is always
+     * overridden to nameMe regardless of what the model returns.
      */
     fun parseWithOpenAi(text: String, apiKey: String, nameMe: String, nameWife: String, categories: List<String> = DEFAULT_CATEGORIES): Entry {
         val systemPrompt = """
             You convert a short household-finance note into strict JSON with keys:
-            person (one of "$nameMe" or "$nameWife"), type (INCOME, EXPENSE, or SAVINGS),
-            bucket (JOINT, PERSONAL_ME, or PERSONAL_WIFE), category (pick the single best match from this
+            type (INCOME, EXPENSE, or SAVINGS), bucket (JOINT or PERSONAL - default to PERSONAL
+            unless the text explicitly says "joint"), category (pick the single best match from this
             exact list: ${categories.joinToString(", ")}), amount (number, INR), frequency (MONTHLY or ANNUAL),
             note (short string), account (bank/account name if mentioned in the text, e.g. "ICICI", "SBI", else null).
             RD, FD, PPF, SIP, LIC, Mutual Funds, Stocks, Gold are SAVINGS not EXPENSE.
@@ -141,9 +136,9 @@ object SmartAddParser {
 
             val json = JSONObject(content)
             return Entry(
-                person = json.optString("person", nameMe),
+                person = nameMe,
                 type = runCatching { EntryType.valueOf(json.getString("type")) }.getOrDefault(EntryType.EXPENSE),
-                bucket = runCatching { Bucket.valueOf(json.getString("bucket")) }.getOrDefault(Bucket.JOINT),
+                bucket = runCatching { Bucket.valueOf(json.getString("bucket")) }.getOrDefault(Bucket.PERSONAL),
                 category = json.optString("category", "Other"),
                 amount = json.optDouble("amount", 0.0),
                 frequency = runCatching { Frequency.valueOf(json.getString("frequency")) }.getOrDefault(Frequency.MONTHLY),

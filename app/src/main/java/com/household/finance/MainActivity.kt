@@ -25,7 +25,6 @@ import com.household.finance.ui.AiHubScreen
 import com.household.finance.ui.AppViewModel
 import com.household.finance.ui.DashboardScreen
 import com.household.finance.ui.EntriesScreen
-import com.household.finance.ui.PinLockScreen
 import com.household.finance.ui.SettingsScreen
 import com.household.finance.ui.theme.GlassBackdrop
 import com.household.finance.ui.theme.HouseholdFinanceTheme
@@ -62,14 +61,6 @@ private val tabs = listOf(
 
 @Composable
 private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
-    val pin by viewModel.settings.pinFlow.collectAsStateWithLifecycle(initialValue = "1234")
-    var unlocked by remember { mutableStateOf(false) }
-
-    if (!unlocked) {
-        PinLockScreen(correctPin = pin) { unlocked = true }
-        return
-    }
-
     val navController = rememberNavController()
     val context = androidx.compose.ui.platform.LocalContext.current
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -124,12 +115,10 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
         ) {
             composable("dashboard") {
                 DashboardScreen(
-                    summary = summary,
                     entries = entries,
                     accounts = accounts,
                     emergencyFundAmount = emergencyFund.currentAmount,
                     nameMe = nameMe,
-                    nameWife = nameWife,
                     onSetEmergencyFund = { viewModel.setEmergencyFund(it) },
                     onSetAccountBalance = { name, balance -> viewModel.setAccountBalance(name, balance) }
                 )
@@ -190,13 +179,11 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                 SettingsScreen(
                     nameMe = nameMe,
                     nameWife = nameWife,
-                    pin = pin,
                     openAiKey = openAiKey,
                     firebaseConfig = firebaseConfig,
                     firestoreReady = firestoreReady,
                     categoryLength = categoryLength,
                     onSaveNames = { me, wife -> scope.launch { viewModel.settings.saveNames(me, wife) } },
-                    onSavePin = { newPin -> scope.launch { viewModel.settings.savePin(newPin) } },
                     onSaveOpenAiKey = { key -> scope.launch { viewModel.settings.saveOpenAiKey(key) } },
                     onSaveFirebaseConfig = { config -> scope.launch { viewModel.settings.saveFirebaseConfig(config) } },
                     onSaveCategoryLength = { length -> scope.launch { viewModel.settings.saveCategoryLength(length) } }

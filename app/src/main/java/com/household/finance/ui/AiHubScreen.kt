@@ -86,9 +86,7 @@ private fun SingleChoiceSegmented(options: List<String>, selectedIndex: Int, onS
 
 private sealed class ChatBubble {
     data class Text(val role: String, val content: String) : ChatBubble()
-    data class PendingEntry(val entry: Entry) : ChatBubble()
     data class AddedEntry(val entry: Entry) : ChatBubble()
-    data class PendingBalance(val update: BalanceUpdate) : ChatBubble()
     data class AppliedBalance(val update: BalanceUpdate) : ChatBubble()
 }
 
@@ -122,12 +120,14 @@ private fun ChatPane(
             result.onSuccess { r ->
                 when {
                     r.draftEntry != null -> {
-                        bubbles.add(ChatBubble.PendingEntry(r.draftEntry))
-                        history.add(ChatMessage("assistant", "Parsed a transaction, awaiting confirmation."))
+                        onAddEntry(r.draftEntry)
+                        bubbles.add(ChatBubble.AddedEntry(r.draftEntry))
+                        history.add(ChatMessage("assistant", "Logged it."))
                     }
                     r.balanceUpdate != null -> {
-                        bubbles.add(ChatBubble.PendingBalance(r.balanceUpdate))
-                        history.add(ChatMessage("assistant", "Parsed a balance update, awaiting confirmation."))
+                        onSetAccountBalance(r.balanceUpdate.account, r.balanceUpdate.balance)
+                        bubbles.add(ChatBubble.AppliedBalance(r.balanceUpdate))
+                        history.add(ChatMessage("assistant", "Balance updated."))
                     }
                     r.replyText != null -> {
                         bubbles.add(ChatBubble.Text("assistant", r.replyText))
@@ -144,7 +144,8 @@ private fun ChatPane(
         if (bubbles.isEmpty()) {
             GlassSurface(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    "Chat-based entry: type \"22k emi\" to log it, \"22k emi from icici\" to also update that account's balance, or \"sbi balance is 50k\" to set a balance directly. You can also just ask a question.",
+                    "Type \"22k emi\" and it's logged instantly under your name as Personal — say \"joint\" if it's shared. " +
+                        "\"22k emi from icici\" also updates that account's balance. \"sbi balance is 50k\" sets a balance directly. Or just ask a question.",
                     style = MaterialTheme.typography.bodySmall
                 )
             }
@@ -159,57 +160,18 @@ private fun ChatPane(
                             GlassSurface(modifier = Modifier.fillMaxWidth(0.85f)) { Text(bubble.content) }
                         }
                     }
-                    is ChatBubble.PendingEntry -> {
-                        GlassSurface(modifier = Modifier.fillMaxWidth()) {
-                            Column {
-                                Text("Log this entry?", fontWeight = FontWeight.Bold)
-                                Spacer(Modifier.height(6.dp))
-                                Text("${bubble.entry.category} — ${bubble.entry.person} · ${bubble.entry.type} · ${bubble.entry.bucket}", style = MaterialTheme.typography.bodySmall)
-                                Text(formatInr(bubble.entry.amount) + if (bubble.entry.frequency.name == "ANNUAL") "/yr" else "/mo", fontWeight = FontWeight.SemiBold)
-                                bubble.entry.accountName?.let {
-                                    Text("Will update $it balance by ${if (bubble.entry.type.name == "INCOME") "+" else "-"}${formatInr(bubble.entry.amount)}", style = MaterialTheme.typography.bodySmall)
-                                }
-                                Spacer(Modifier.height(10.dp))
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Button(onClick = {
-                                        onAddEntry(bubble.entry)
-                                        val idx = bubbles.indexOf(bubble)
-                                        if (idx >= 0) bubbles[idx] = ChatBubble.AddedEntry(bubble.entry)
-                                    }) { Text("Add") }
-                                    OutlinedButton(onClick = {
-                                        val idx = bubbles.indexOf(bubble)
-                                        if (idx >= 0) bubbles.removeAt(idx)
-                                    }) { Text("Discard") }
-                                }
-                            }
-                        }
-                    }
                     is ChatBubble.AddedEntry -> {
                         GlassSurface(modifier = Modifier.fillMaxWidth()) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("✅", modifier = Modifier.padding(end = 8.dp))
-                                Text("Added ${bubble.entry.category} — ${formatInr(bubble.entry.amount)} for ${bubble.entry.person}", color = Positive)
-                            }
-                        }
-                    }
-                    is ChatBubble.PendingBalance -> {
-                        GlassSurface(modifier = Modifier.fillMaxWidth()) {
                             Column {
-                                Text("Set ${bubble.update.account} balance?", fontWeight = FontWeight.Bold)
-                                Spacer(Modifier.height(6.dp))
-                                Text(formatInr(bubble.update.balance), fontWeight = FontWeight.SemiBold)
-                                Spacer(Modifier.height(10.dp))
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Button(onClick = {
-                                        onSetAccountBalance(bubble.update.account, bubble.update.balance)
-                                        val idx = bubbles.indexOf(bubble)
-                                        if (idx >= 0) bubbles[idx] = ChatBubble.AppliedBalance(bubble.update)
-                                    }) { Text("Set") }
-                                    OutlinedButton(onClick = {
-                                        val idx = bubbles.indexOf(bubble)
-                                        if (idx >= 0) bubbles.removeAt(idx)
-                                    }) { Text("Discard") }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("✅", modifier = Modifier.padding(end = 8.dp))
+                                    Text("Logged ${bubble.entry.category} — ${formatInr(bubble.entry.amount)}", color = Positive)
                                 }
+                                Text(
+                                    "${bubble.entry.person} · ${bubble.entry.bucket}" +
+                                        (bubble.entry.accountName?.let { " · $it ${if (bubble.entry.type.name == "INCOME") "+" else "-"}${formatInr(bubble.entry.amount)}" } ?: ""),
+                                    style = MaterialTheme.typography.bodySmall
+                                )
                             }
                         }
                     }

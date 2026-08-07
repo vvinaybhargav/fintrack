@@ -2,7 +2,9 @@ package com.household.finance.data
 
 enum class EntryType { INCOME, EXPENSE, SAVINGS }
 
-enum class Bucket { JOINT, PERSONAL_ME, PERSONAL_WIFE }
+// Whose personal bucket an entry belongs to is carried by `Entry.person`, not by the enum -
+// a single PERSONAL value keeps the schema symmetric across both partners' devices.
+enum class Bucket { JOINT, PERSONAL }
 
 enum class Frequency { MONTHLY, ANNUAL }
 
@@ -12,7 +14,7 @@ data class Entry(
     val id: String = "",
     val person: String = "",
     val type: EntryType = EntryType.EXPENSE,
-    val bucket: Bucket = Bucket.JOINT,
+    val bucket: Bucket = Bucket.PERSONAL,
     val category: String = "",
     val amount: Double = 0.0,
     val frequency: Frequency = Frequency.MONTHLY,

@@ -11,13 +11,12 @@ import kotlinx.coroutines.flow.map
 private val Context.dataStore by preferencesDataStore(name = "household_finance_settings")
 
 /**
- * Local-only settings: PIN, person names, Firebase config, and the OpenAI key.
+ * Local-only settings: this device's identity (person names), Firebase config, and the OpenAI key.
  * Firebase config + OpenAI key are stored ONLY on-device (never written to Firestore).
  */
 class AppSettings(private val context: Context) {
 
     private object Keys {
-        val PIN = stringPreferencesKey("pin")
         val NAME_ME = stringPreferencesKey("name_me")
         val NAME_WIFE = stringPreferencesKey("name_wife")
         val FB_API_KEY = stringPreferencesKey("fb_api_key")
@@ -29,7 +28,6 @@ class AppSettings(private val context: Context) {
         val CATEGORY_LENGTH = stringPreferencesKey("category_length")
     }
 
-    val pinFlow: Flow<String> = context.dataStore.data.map { it[Keys.PIN] ?: "1234" }
     val nameMeFlow: Flow<String> = context.dataStore.data.map { it[Keys.NAME_ME] ?: "Me" }
     val nameWifeFlow: Flow<String> = context.dataStore.data.map { it[Keys.NAME_WIFE] ?: "Wife" }
     val openAiKeyFlow: Flow<String> = context.dataStore.data.map { it[Keys.OPENAI_KEY] ?: "" }
@@ -63,10 +61,6 @@ class AppSettings(private val context: Context) {
     }
 
     suspend fun currentFirebaseConfig(): FirebaseConfig = firebaseConfigFlow.first()
-
-    suspend fun savePin(pin: String) {
-        context.dataStore.edit { it[Keys.PIN] = pin }
-    }
 
     suspend fun saveNames(me: String, wife: String) {
         context.dataStore.edit {

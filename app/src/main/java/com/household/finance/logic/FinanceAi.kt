@@ -86,9 +86,9 @@ object FinanceAi {
             Household Finance. Amounts are in INR.
 
             If the user's latest message is REPORTING A NEW TRANSACTION (an expense, income, or saving —
-            e.g. "paid 22k emi", "add 4500 wife music class", "20k rd", "22k emi from icici"), reply with
-            ONLY a single line:
-            ENTRY:{"person":"$nameMe or $nameWife","type":"INCOME|EXPENSE|SAVINGS","bucket":"JOINT|PERSONAL_ME|PERSONAL_WIFE","category":"one of: ${categories.joinToString(", ")}","amount":number,"frequency":"MONTHLY|ANNUAL","note":"short string","account":"bank/account name if mentioned, else null"}
+            e.g. "paid 22k emi", "22k emi from icici", "20k rd"), reply with ONLY a single line:
+            ENTRY:{"type":"INCOME|EXPENSE|SAVINGS","bucket":"JOINT|PERSONAL","category":"one of: ${categories.joinToString(", ")}","amount":number,"frequency":"MONTHLY|ANNUAL","note":"short string","account":"bank/account name if mentioned, else null"}
+            Default bucket to PERSONAL unless the user explicitly says "joint".
             RD, FD, PPF, SIP, LIC, Mutual Funds, Stocks, Gold are SAVINGS not EXPENSE.
 
             If the user's latest message is DIRECTLY STATING AN ACCOUNT'S BALANCE (not a transaction —
@@ -118,11 +118,11 @@ object FinanceAi {
             val parsed = runCatching {
                 val json = JSONObject(jsonText)
                 Entry(
-                    person = json.optString("person", nameMe),
+                    person = nameMe,
                     type = runCatching { com.household.finance.data.EntryType.valueOf(json.getString("type")) }
                         .getOrDefault(com.household.finance.data.EntryType.EXPENSE),
                     bucket = runCatching { com.household.finance.data.Bucket.valueOf(json.getString("bucket")) }
-                        .getOrDefault(com.household.finance.data.Bucket.JOINT),
+                        .getOrDefault(com.household.finance.data.Bucket.PERSONAL),
                     category = json.optString("category", categories.firstOrNull() ?: "Other"),
                     amount = json.optDouble("amount", 0.0),
                     frequency = runCatching { com.household.finance.data.Frequency.valueOf(json.getString("frequency")) }

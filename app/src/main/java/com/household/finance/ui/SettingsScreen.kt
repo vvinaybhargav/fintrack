@@ -2,14 +2,10 @@ package com.household.finance.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.household.finance.data.AppSettings
 import com.household.finance.data.CategoryListLength
@@ -20,20 +16,17 @@ import com.household.finance.ui.theme.Positive
 fun SettingsScreen(
     nameMe: String,
     nameWife: String,
-    pin: String,
     openAiKey: String,
     firebaseConfig: AppSettings.FirebaseConfig,
     firestoreReady: Boolean,
     categoryLength: CategoryListLength,
     onSaveNames: (String, String) -> Unit,
-    onSavePin: (String) -> Unit,
     onSaveOpenAiKey: (String) -> Unit,
     onSaveFirebaseConfig: (AppSettings.FirebaseConfig) -> Unit,
     onSaveCategoryLength: (CategoryListLength) -> Unit
 ) {
     var meField by remember(nameMe) { mutableStateOf(nameMe) }
     var wifeField by remember(nameWife) { mutableStateOf(nameWife) }
-    var pinField by remember(pin) { mutableStateOf(pin) }
 
     // One comma-separated field: apiKey,appId,projectId,storageBucket,messagingSenderId,openAiKey
     var combinedConfig by remember(firebaseConfig, openAiKey) {
@@ -53,6 +46,11 @@ fun SettingsScreen(
         GlassSurface(modifier = Modifier.fillMaxWidth()) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("HOUSEHOLD", style = MaterialTheme.typography.labelLarge)
+                Text(
+                    "\"Your name\" is this device's identity — every entry you add is automatically logged under it. " +
+                        "Enter your own name here and your partner's name in the other field; on your partner's phone it's the other way round.",
+                    style = MaterialTheme.typography.bodySmall
+                )
                 OutlinedTextField(value = meField, onValueChange = { meField = it }, label = { Text("Your name") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(value = wifeField, onValueChange = { wifeField = it }, label = { Text("Partner's name") }, modifier = Modifier.fillMaxWidth())
                 Button(onClick = { onSaveNames(meField, wifeField) }) { Text("Save Names") }
@@ -73,21 +71,6 @@ fun SettingsScreen(
                         )
                     }
                 }
-            }
-        }
-
-        GlassSurface(modifier = Modifier.fillMaxWidth()) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("APP LOCK", style = MaterialTheme.typography.labelLarge)
-                OutlinedTextField(
-                    value = pinField,
-                    onValueChange = { if (it.length <= 4) pinField = it.filter { c -> c.isDigit() } },
-                    label = { Text("4-digit PIN") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                    visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Button(onClick = { if (pinField.length == 4) onSavePin(pinField) }, enabled = pinField.length == 4) { Text("Save PIN") }
             }
         }
 

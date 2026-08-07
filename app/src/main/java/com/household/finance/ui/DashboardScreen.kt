@@ -23,7 +23,6 @@ import com.household.finance.data.Bucket
 import com.household.finance.data.Entry
 import com.household.finance.data.PolicyStatus
 import com.household.finance.logic.Calculations
-import com.household.finance.logic.DashboardSummary
 import com.household.finance.logic.InsightsCoach
 import com.household.finance.ui.theme.Cyan
 import com.household.finance.ui.theme.GlassSurface
@@ -48,28 +47,57 @@ fun formatInr(value: Double): String {
     return "$sign₹$sb,$last3"
 }
 
+private enum class DashboardView { PERSONAL, JOINT }
+
 @Composable
 fun DashboardScreen(
-    summary: DashboardSummary,
     entries: List<Entry>,
     accounts: List<Account>,
     emergencyFundAmount: Double,
     nameMe: String,
-    nameWife: String,
     onSetEmergencyFund: (Double) -> Unit,
     onSetAccountBalance: (String, Double) -> Unit
 ) {
+    var view by remember { mutableStateOf(DashboardView.PERSONAL) }
     var efInput by remember(emergencyFundAmount) { mutableStateOf(emergencyFundAmount.toInt().toString()) }
     var detailsExpanded by remember { mutableStateOf(false) }
 
+    // Personal shows only entries logged under this device's own name; Joint shows shared entries.
+    val filteredEntries = remember(entries, view, nameMe) {
+        when (view) {
+            DashboardView.PERSONAL -> entries.filter { it.bucket == Bucket.PERSONAL && it.person == nameMe }
+            DashboardView.JOINT -> entries.filter { it.bucket == Bucket.JOINT }
+        }
+    }
+    val summary = remember(filteredEntries) { Calculations.summarize(filteredEntries) }
+
     val target = Calculations.emergencyFundTarget(summary.totalExpenses)
     val efProgress = if (target > 0) (emergencyFundAmount / target).coerceIn(0.0, 1.0) else 0.0
-    val nudges = remember(entries) { InsightsCoach.fallbackNudges(entries) }
-    val recurring = Calculations.recurringCommitments(entries)
-    val policies = entries.filter { Calculations.policyStatus(it) != PolicyStatus.ACTIVE || it.category in setOf("LIC", "RD", "FD", "PPF", "SIP") }
+    val nudges = remember(filteredEntries) { InsightsCoach.fallbackNudges(filteredEntries) }
+    val recurring = remember(filteredEntries) { Calculations.recurringCommitments(filteredEntries) }
+    val policies = remember(filteredEntries) {
+        filteredEntries.filter { Calculations.policyStatus(it) != PolicyStatus.ACTIVE || it.category in setOf("LIC", "RD", "FD", "PPF", "SIP") }
+    }
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        // --- Glanceable hero: the three numbers that matter, big, at the top ---
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = view == DashboardView.PERSONAL,
+                    onClick = { view = DashboardView.PERSONAL },
+                    label = { Text(nameMe) },
+                    modifier = Modifier.weight(1f)
+                )
+                FilterChip(
+                    selected = view == DashboardView.JOINT,
+                    onClick = { view = DashboardView.JOINT },
+                    label = { Text("Joint") },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+
+        // --- Glanceable hero: the numbers that matter for the selected view, big, at the top ---
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 HeroStat(
@@ -135,6 +163,15 @@ fun DashboardScreen(
                     }
                 }
             }
+        } else {
+            item {
+                GlassSurface(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        if (view == DashboardView.PERSONAL) "No personal entries for $nameMe yet." else "No joint entries yet.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
         }
 
         // --- Everything else lives behind one toggle so the first screen stays glanceable ---
@@ -148,41 +185,6 @@ fun DashboardScreen(
         }
 
         if (detailsExpanded) {
-            item {
-                GlassSurface(modifier = Modifier.fillMaxWidth()) {
-                    Column {
-                        Text("BY PERSON", style = MaterialTheme.typography.labelLarge)
-                        listOf(nameMe, nameWife).forEach { person ->
-                            Text(person, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
-                            SummaryRow("Income", formatInr(summary.incomeByPerson[person] ?: 0.0))
-                            SummaryRow("Expenses", formatInr(summary.expenseByPerson[person] ?: 0.0))
-                            SummaryRow("Savings", formatInr(summary.savingsByPerson[person] ?: 0.0))
-                        }
-                    }
-                }
-            }
-
-            item {
-                GlassSurface(modifier = Modifier.fillMaxWidth()) {
-                    Column {
-                        Text("BY BUCKET", style = MaterialTheme.typography.labelLarge)
-                        Spacer(Modifier.height(10.dp))
-                        SummaryRow("Joint", formatInr(summary.byBucket[Bucket.JOINT] ?: 0.0))
-                        SummaryRow("Personal ($nameMe)", formatInr(summary.byBucket[Bucket.PERSONAL_ME] ?: 0.0))
-                        SummaryRow("Personal ($nameWife)", formatInr(summary.byBucket[Bucket.PERSONAL_WIFE] ?: 0.0))
-                        if (summary.incomeRatio.isNotEmpty()) {
-                            Spacer(Modifier.height(10.dp))
-                            Text(
-                                "Joint split by income ratio: " + summary.incomeRatio.entries.joinToString(" : ") {
-                                    "${it.key} ${String.format(Locale.US, "%.0f%%", it.value * 100)}"
-                                },
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-                    }
-                }
-            }
-
             item {
                 GlassSurface(modifier = Modifier.fillMaxWidth()) {
                     Column {
@@ -219,7 +221,7 @@ fun DashboardScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Column {
-                                        Text("${item.entry.category} (${item.entry.person})", style = MaterialTheme.typography.bodyMedium)
+                                        Text(item.entry.category, style = MaterialTheme.typography.bodyMedium)
                                         Text(formatInr(item.monthlyAmount) + "/mo", style = MaterialTheme.typography.bodySmall)
                                     }
                                     Text(formatInr(item.yearlyAmount) + "/yr", fontWeight = FontWeight.SemiBold)
@@ -251,7 +253,7 @@ fun DashboardScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("${p.category} (${p.person}) — ${formatInr(p.amount)}/${if (p.frequency.name == "ANNUAL") "yr" else "mo"}")
+                                    Text("${p.category} — ${formatInr(p.amount)}/${if (p.frequency.name == "ANNUAL") "yr" else "mo"}")
                                     AssistChip(onClick = {}, label = { Text(status.name.replace("_", " ")) })
                                 }
                             }
@@ -293,14 +295,6 @@ private fun MiniStat(label: String, value: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(label, style = MaterialTheme.typography.bodySmall)
         Text(value, fontWeight = FontWeight.SemiBold)
-    }
-}
-
-@Composable
-private fun SummaryRow(label: String, value: String, bold: Boolean = false, accent: Color? = null) {
-    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal)
-        Text(value, fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal, color = accent ?: MaterialTheme.colorScheme.onSurface)
     }
 }
 
