@@ -23,6 +23,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -43,6 +44,7 @@ import com.household.finance.logic.Calculations
 import com.household.finance.logic.InsightsCoach
 import com.household.finance.ui.theme.Cyan
 import com.household.finance.ui.theme.GlassSurface
+import com.household.finance.ui.theme.InkRaised
 import com.household.finance.ui.theme.Positive
 import com.household.finance.ui.theme.Violet
 import com.household.finance.ui.theme.Warning
@@ -134,7 +136,7 @@ fun DashboardScreen(
     val trend = remember(filteredEntries) { Calculations.monthlyTrend(filteredEntries) }
     val sortedBills = remember(bills) { bills.sortedBy { it.dueDate } }
 
-    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    LazyColumn(modifier = Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
@@ -159,37 +161,52 @@ fun DashboardScreen(
         }
 
         item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
-                    selected = view == DashboardView.PERSONAL,
-                    onClick = { view = DashboardView.PERSONAL },
-                    label = { Text(nameMe) },
-                    modifier = Modifier.weight(1f)
-                )
-                FilterChip(
-                    selected = view == DashboardView.JOINT,
-                    onClick = { view = DashboardView.JOINT },
-                    label = { Text("Joint") },
-                    modifier = Modifier.weight(1f)
-                )
+            // Pill toggle: a rounded track with a clearly-filled mint active segment.
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .background(InkRaised, androidx.compose.foundation.shape.RoundedCornerShape(999.dp))
+                    .padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                PillToggleOption(text = nameMe, selected = view == DashboardView.PERSONAL, modifier = Modifier.weight(1f)) {
+                    view = DashboardView.PERSONAL
+                }
+                PillToggleOption(text = "Joint", selected = view == DashboardView.JOINT, modifier = Modifier.weight(1f)) {
+                    view = DashboardView.JOINT
+                }
             }
         }
 
         // --- Glanceable hero: the numbers that matter for the selected view, big, at the top ---
         item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 HeroStat(
                     label = "LEFT OVER",
                     value = formatInr(summary.surplus),
                     accent = if (summary.surplus >= 0) Positive else Warning,
-                    modifier = Modifier.weight(1.3f)
+                    modifier = Modifier.weight(1.3f),
+                    gradient = true
                 )
-                HeroStat(
-                    label = "SAVINGS RATE",
-                    value = String.format(Locale.US, "%.0f%%", summary.savingsRatePct),
-                    accent = Positive,
-                    modifier = Modifier.weight(1f)
-                )
+                if (summary.totalIncome <= 0.0) {
+                    GlassSurface(modifier = Modifier.weight(1f)) {
+                        Column {
+                            Text("SAVINGS RATE", style = MaterialTheme.typography.labelLarge)
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                "Add income to see your savings rate",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+                } else {
+                    HeroStat(
+                        label = "SAVINGS RATE",
+                        value = String.format(Locale.US, "%.0f%%", summary.savingsRatePct),
+                        accent = Positive,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
         }
 
@@ -202,7 +219,7 @@ fun DashboardScreen(
                 }
             }
             item {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(accounts, key = { it.name }) { account ->
                         BalanceChip(
                             account = account,
@@ -477,13 +494,41 @@ fun DashboardScreen(
 }
 
 @Composable
-private fun HeroStat(label: String, value: String, accent: Color, modifier: Modifier = Modifier) {
-    GlassSurface(modifier = modifier) {
+private fun HeroStat(label: String, value: String, accent: Color, modifier: Modifier = Modifier, gradient: Boolean = false) {
+    val bg = if (gradient) {
+        Modifier.background(
+            Brush.radialGradient(listOf(accent.copy(alpha = 0.14f), Color.Transparent), radius = 240f),
+            androidx.compose.foundation.shape.RoundedCornerShape(20.dp)
+        )
+    } else Modifier
+    GlassSurface(modifier = modifier.then(bg)) {
         Column {
             Text(label, style = MaterialTheme.typography.labelLarge)
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(6.dp))
             Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = accent)
         }
+    }
+}
+
+/** One segment of the Personal/Joint pill toggle — a clearly-filled mint state when selected. */
+@Composable
+private fun PillToggleOption(text: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Box(
+        modifier = modifier
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(999.dp))
+            .background(
+                if (selected) Brush.linearGradient(listOf(Positive, Cyan.copy(alpha = 0.85f))) else Brush.linearGradient(listOf(Color.Transparent, Color.Transparent))
+            )
+            .clickable { onClick() }
+            .padding(vertical = 9.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = if (selected) Color(0xFF04211C) else MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
@@ -689,16 +734,19 @@ private fun CategorySpendRow(category: String, amount: Double, maxAmount: Double
             )
         }
         Spacer(Modifier.height(4.dp))
-        Box(Modifier.fillMaxWidth().height(5.dp).background(Color(0x1AFFFFFF), androidx.compose.foundation.shape.RoundedCornerShape(3.dp))) {
-            Box(
-                Modifier
-                    .fillMaxWidth(fraction = (amount / maxAmount).toFloat().coerceIn(0f, 1f))
-                    .height(5.dp)
-                    .background(
-                        if (overBudget) Brush.horizontalGradient(listOf(Warning, Warning)) else Brush.horizontalGradient(listOf(Violet, Cyan)),
-                        androidx.compose.foundation.shape.RoundedCornerShape(3.dp)
-                    )
-            )
+        Box(Modifier.fillMaxWidth().height(6.dp).background(Color(0x0FFFFFFF), androidx.compose.foundation.shape.RoundedCornerShape(3.dp))) {
+            // No budget set: track stays muted/unfilled rather than implying progress against nothing.
+            if (budgetLimit != null) {
+                Box(
+                    Modifier
+                        .fillMaxWidth(fraction = (amount / maxAmount).toFloat().coerceIn(0f, 1f))
+                        .height(6.dp)
+                        .background(
+                            if (overBudget) Brush.horizontalGradient(listOf(Color(0xFFC85A44), Warning)) else Brush.horizontalGradient(listOf(Color(0xFF1FB39A), Cyan)),
+                            androidx.compose.foundation.shape.RoundedCornerShape(3.dp)
+                        )
+                )
+            }
         }
         Spacer(Modifier.height(2.dp))
         if (editingLimit) {
@@ -732,10 +780,11 @@ private fun BalanceChip(account: Account, onSave: (Double) -> Unit, onRename: (S
     GlassSurface(
         modifier = Modifier
             .widthIn(min = 130.dp)
+            .heightIn(min = 96.dp)
             .animateContentSize()
             .clickable(enabled = !editing) { editing = true },
         cornerRadius = 18,
-        contentPadding = 12
+        contentPadding = 14
     ) {
         if (editing) {
             BalanceEditForm(
@@ -746,17 +795,18 @@ private fun BalanceChip(account: Account, onSave: (Double) -> Unit, onRename: (S
                 onCancel = { editing = false }
             )
         } else {
-            Column {
+            Column(Modifier.fillMaxHeight(), verticalArrangement = Arrangement.SpaceBetween) {
                 Text(account.name, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    formatInr(account.balance),
-                    fontWeight = FontWeight.Bold,
-                    color = if (account.balance < 0) Warning else Positive
-                )
-                if (account.lastEditedBy.isNotBlank()) {
-                    Spacer(Modifier.height(2.dp))
-                    Text("by ${account.lastEditedBy}", style = MaterialTheme.typography.bodySmall)
+                Column {
+                    Text(
+                        formatInr(account.balance),
+                        fontWeight = FontWeight.Bold,
+                        color = if (account.balance < 0) Warning else Positive
+                    )
+                    if (account.lastEditedBy.isNotBlank()) {
+                        Spacer(Modifier.height(2.dp))
+                        Text("by ${account.lastEditedBy}", style = MaterialTheme.typography.bodySmall)
+                    }
                 }
             }
         }

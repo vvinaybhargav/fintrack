@@ -15,25 +15,28 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
-// A deep, slightly blue-black ground with an electric violet/cyan accent pair —
-// chosen so the accent reads as "premium fintech" rather than generic neon.
-val InkBase = Color(0xFF0A0C12)
-val InkRaised = Color(0xFF12141C)
-val Violet = Color(0xFF8B7CF6)
-val Cyan = Color(0xFF52E1D0)
-val GlassStroke = Color(0x33FFFFFF)
-val GlassFillTop = Color(0x1FFFFFFF)
-val GlassFillBottom = Color(0x0AFFFFFF)
-val TextPrimary = Color(0xFFF3F3F7)
-val TextSecondary = Color(0xFFA5A8B8)
-val Positive = Color(0xFF52E1D0)
-val Warning = Color(0xFFF6B35C)
-val Danger = Color(0xFFF16C6C)
+// A richer near-black ground with a single mint primary and a soft red-orange alert —
+// violet survives only as a faint gradient detail, never as a competing accent.
+val InkBase = Color(0xFF0A0A0F)
+val InkRaised = Color(0xFF14141C)
+val Violet = Color(0xFF8B7CF6) // gradient-detail only, kept faint via low alpha where used
+val Cyan = Color(0xFF2FE0C0)   // primary accent (mint)
+val GlassStroke = Color(0x14FFFFFF) // ~8% white
+val GlassFillTop = Color(0x14FFFFFF)
+val GlassFillBottom = Color(0x08FFFFFF)
+val TextPrimary = Color(0xFFF5F6F8)
+val TextSecondary = Color(0xFFA7ACBD)
+val Positive = Color(0xFF2FE0C0)
+val Warning = Color(0xFFF2795D)
+val Danger = Color(0xFFF2795D)
 
+// Mint is the single primary accent (drives default Button/FilterChip fills); violet is demoted
+// to secondary so it only ever shows up as a faint gradient detail, never a competing accent.
 private val HouseholdDarkScheme = darkColorScheme(
-    primary = Violet,
-    onPrimary = Color(0xFF120E2A),
-    secondary = Cyan,
+    primary = Cyan,
+    onPrimary = Color(0xFF04211C),
+    secondary = Violet,
+    onSecondary = Color(0xFF120E2A),
     background = InkBase,
     onBackground = TextPrimary,
     surface = InkRaised,
@@ -55,8 +58,8 @@ fun HouseholdFinanceTheme(content: @Composable () -> Unit) {
 @Composable
 fun GlassSurface(
     modifier: Modifier = Modifier,
-    cornerRadius: Int = 24,
-    contentPadding: Int = 16,
+    cornerRadius: Int = 20,
+    contentPadding: Int = 18,
     content: @Composable () -> Unit
 ) {
     Surface(
