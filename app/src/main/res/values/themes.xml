@@ -1,3 +1,7 @@
 <resources>
-    <style name="Theme.HouseholdFinance" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.HouseholdFinance" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#0A0C12</item>
+        <item name="android:statusBarColor">#0A0C12</item>
+        <item name="android:navigationBarColor">#0A0C12</item>
+    </style>
 </resources>

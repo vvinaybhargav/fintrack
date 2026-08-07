@@ -1,5 +1,6 @@
 package com.household.finance.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -12,20 +13,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.household.finance.data.Entry
+import com.household.finance.ui.theme.GlassSurface
 
 @Composable
-fun EntriesScreen(entries: List<Entry>, onDelete: (String) -> Unit) {
+fun EntriesScreen(entries: List<Entry>, onDelete: (String) -> Unit, onEdit: (Entry) -> Unit) {
     if (entries.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("No entries yet. Add one from the Add tab.")
         }
         return
     }
-    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         items(entries, key = { it.id }) { entry ->
-            Card(modifier = Modifier.fillMaxWidth()) {
+            GlassSurface(modifier = Modifier.fillMaxWidth().clickable { onEdit(entry) }) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {

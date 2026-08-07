@@ -7,6 +7,7 @@ import com.household.finance.data.AppSettings
 import com.household.finance.data.EmergencyFund
 import com.household.finance.data.Entry
 import com.household.finance.data.FirestoreFinanceRepository
+import com.household.finance.data.Goal
 import com.household.finance.logic.Calculations
 import com.household.finance.logic.DashboardSummary
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -37,6 +38,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val _firestoreReady = MutableStateFlow(false)
     val firestoreReady: StateFlow<Boolean> = _firestoreReady.asStateFlow()
 
+    private val _goals = MutableStateFlow<List<Goal>>(emptyList())
+    val goals: StateFlow<List<Goal>> = _goals.asStateFlow()
+
     init {
         viewModelScope.launch {
             settings.nameMeFlow.collect { _nameMe.value = it }
@@ -58,6 +62,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     launch {
                         repository.observeEmergencyFund().collect { _emergencyFund.value = it }
                     }
+                    launch {
+                        repository.observeGoals().collect { _goals.value = it }
+                    }
                 }
             }
         }
@@ -73,5 +80,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setEmergencyFund(amount: Double) {
         viewModelScope.launch { repository.setEmergencyFund(amount) }
+    }
+
+    fun addGoal(goal: Goal) {
+        viewModelScope.launch { repository.addGoal(goal) }
+    }
+
+    fun deleteGoal(id: String) {
+        viewModelScope.launch { repository.deleteGoal(id) }
     }
 }

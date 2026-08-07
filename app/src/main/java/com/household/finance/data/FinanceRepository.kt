@@ -17,6 +17,9 @@ interface FinanceRepository {
     suspend fun deleteEntry(id: String)
     fun observeEmergencyFund(): Flow<EmergencyFund>
     suspend fun setEmergencyFund(amount: Double)
+    fun observeGoals(): Flow<List<Goal>>
+    suspend fun addGoal(goal: Goal)
+    suspend fun deleteGoal(id: String)
     fun isReady(): Boolean
 }
 
@@ -64,6 +67,9 @@ class FirestoreFinanceRepository(private val context: Context) : FinanceReposito
     private fun metaDoc() =
         firestore?.collection("workspaces")?.document(WORKSPACE_ID)?.collection("meta")?.document("emergencyFund")
 
+    private fun goalsCollection() =
+        firestore?.collection("workspaces")?.document(WORKSPACE_ID)?.collection("goals")
+
     override fun observeEntries(): Flow<List<Entry>> = callbackFlow {
         val col = entriesCollection()
         if (col == null) {
@@ -106,5 +112,31 @@ class FirestoreFinanceRepository(private val context: Context) : FinanceReposito
 
     override suspend fun setEmergencyFund(amount: Double) {
         metaDoc()?.set(mapOf("currentAmount" to amount))
+    }
+
+    override fun observeGoals(): Flow<List<Goal>> = callbackFlow {
+        val col = goalsCollection()
+        if (col == null) {
+            trySend(emptyList())
+            awaitClose { }
+            return@callbackFlow
+        }
+        val registration = col.addSnapshotListener { snapshot, _ ->
+            val list = snapshot?.documents?.mapNotNull { doc ->
+                doc.data?.let { Goal.fromMap(doc.id, it) }
+            } ?: emptyList()
+            trySend(list.sortedByDescending { it.createdAt })
+        }
+        awaitClose { registration.remove() }
+    }
+
+    override suspend fun addGoal(goal: Goal) {
+        val col = goalsCollection() ?: return
+        val docRef = if (goal.id.isBlank()) col.document() else col.document(goal.id)
+        docRef.set(goal.toMap())
+    }
+
+    override suspend fun deleteGoal(id: String) {
+        goalsCollection()?.document(id)?.delete()
     }
 }

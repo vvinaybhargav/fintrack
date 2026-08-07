@@ -4,9 +4,11 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
@@ -18,12 +20,16 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.household.finance.data.Entry
 import com.household.finance.ui.AddEntryScreen
+import com.household.finance.ui.AiHubScreen
 import com.household.finance.ui.AppViewModel
 import com.household.finance.ui.DashboardScreen
 import com.household.finance.ui.EntriesScreen
 import com.household.finance.ui.PinLockScreen
 import com.household.finance.ui.SettingsScreen
+import com.household.finance.ui.theme.GlassBackdrop
+import com.household.finance.ui.theme.HouseholdFinanceTheme
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -33,8 +39,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme {
-                AppRoot(viewModel)
+            HouseholdFinanceTheme {
+                GlassBackdrop {
+                    AppRoot(viewModel)
+                }
             }
         }
     }
@@ -46,6 +54,7 @@ private val tabs = listOf(
     Tab("dashboard", "Dashboard", Icons.Filled.Home),
     Tab("add", "Add", Icons.Filled.Add),
     Tab("entries", "Entries", Icons.Filled.List),
+    Tab("ai", "AI", Icons.Filled.AutoAwesome),
     Tab("settings", "Settings", Icons.Filled.Settings)
 )
 
@@ -66,6 +75,7 @@ private fun AppRoot(viewModel: AppViewModel) {
     val entries by viewModel.entries.collectAsStateWithLifecycle()
     val summary by viewModel.summary.collectAsStateWithLifecycle()
     val emergencyFund by viewModel.emergencyFund.collectAsStateWithLifecycle()
+    val goals by viewModel.goals.collectAsStateWithLifecycle()
     val nameMe by viewModel.nameMe.collectAsStateWithLifecycle()
     val nameWife by viewModel.nameWife.collectAsStateWithLifecycle()
     val openAiKey by viewModel.settings.openAiKeyFlow.collectAsStateWithLifecycle(initialValue = "")
@@ -75,13 +85,17 @@ private fun AppRoot(viewModel: AppViewModel) {
     val firestoreReady by viewModel.firestoreReady.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
 
+    var editingEntry by remember { mutableStateOf<Entry?>(null) }
+
     Scaffold(
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         bottomBar = {
-            NavigationBar {
+            NavigationBar(containerColor = androidx.compose.ui.graphics.Color.Transparent) {
                 tabs.forEach { tab ->
                     NavigationBarItem(
                         selected = currentRoute == tab.route,
                         onClick = {
+                            if (tab.route != "add") editingEntry = null
                             navController.navigate(tab.route) {
                                 popUpTo(navController.graph.startDestinationId) { saveState = true }
                                 launchSingleTop = true
@@ -95,7 +109,11 @@ private fun AppRoot(viewModel: AppViewModel) {
             }
         }
     ) { padding ->
-        NavHost(navController = navController, startDestination = "dashboard", modifier = Modifier.padding(padding)) {
+        NavHost(
+            navController = navController,
+            startDestination = "dashboard",
+            modifier = Modifier.padding(padding).fillMaxSize()
+        ) {
             composable("dashboard") {
                 DashboardScreen(
                     summary = summary,
@@ -103,7 +121,6 @@ private fun AppRoot(viewModel: AppViewModel) {
                     emergencyFundAmount = emergencyFund.currentAmount,
                     nameMe = nameMe,
                     nameWife = nameWife,
-                    openAiKey = openAiKey,
                     onSetEmergencyFund = { viewModel.setEmergencyFund(it) }
                 )
             }
@@ -112,11 +129,33 @@ private fun AppRoot(viewModel: AppViewModel) {
                     nameMe = nameMe,
                     nameWife = nameWife,
                     openAiKey = openAiKey,
-                    onSave = { viewModel.addEntry(it) }
+                    editingEntry = editingEntry,
+                    onSave = { viewModel.addEntry(it) },
+                    onCancelEdit = { editingEntry = null }
                 )
             }
             composable("entries") {
-                EntriesScreen(entries = entries, onDelete = { viewModel.deleteEntry(it) })
+                EntriesScreen(
+                    entries = entries,
+                    onDelete = { viewModel.deleteEntry(it) },
+                    onEdit = { entry ->
+                        editingEntry = entry
+                        navController.navigate("add") {
+                            popUpTo(navController.graph.startDestinationId) { saveState = true }
+                            launchSingleTop = true
+                        }
+                    }
+                )
+            }
+            composable("ai") {
+                AiHubScreen(
+                    entries = entries,
+                    goals = goals,
+                    monthlySurplus = summary.surplus,
+                    openAiKey = openAiKey,
+                    onAddGoal = { viewModel.addGoal(it) },
+                    onDeleteGoal = { viewModel.deleteGoal(it) }
+                )
             }
             composable("settings") {
                 SettingsScreen(

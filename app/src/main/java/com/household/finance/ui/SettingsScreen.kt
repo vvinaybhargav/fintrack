@@ -12,6 +12,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.household.finance.data.AppSettings
+import com.household.finance.ui.theme.GlassSurface
+import com.household.finance.ui.theme.Positive
 
 @Composable
 fun SettingsScreen(
@@ -39,65 +41,78 @@ fun SettingsScreen(
 
     Column(
         modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Text("Household", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        OutlinedTextField(value = meField, onValueChange = { meField = it }, label = { Text("Your name") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = wifeField, onValueChange = { wifeField = it }, label = { Text("Partner's name") }, modifier = Modifier.fillMaxWidth())
-        Button(onClick = { onSaveNames(meField, wifeField) }) { Text("Save Names") }
+        GlassSurface(modifier = Modifier.fillMaxWidth()) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("HOUSEHOLD", style = MaterialTheme.typography.labelLarge)
+                OutlinedTextField(value = meField, onValueChange = { meField = it }, label = { Text("Your name") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = wifeField, onValueChange = { wifeField = it }, label = { Text("Partner's name") }, modifier = Modifier.fillMaxWidth())
+                Button(onClick = { onSaveNames(meField, wifeField) }) { Text("Save Names") }
+            }
+        }
 
-        Divider(Modifier.padding(vertical = 8.dp))
-
-        Text("App Lock", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        OutlinedTextField(
-            value = pinField,
-            onValueChange = { if (it.length <= 4) pinField = it.filter { c -> c.isDigit() } },
-            label = { Text("4-digit PIN") },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-            visualTransformation = PasswordVisualTransformation(),
-            modifier = Modifier.fillMaxWidth()
-        )
-        Button(onClick = { if (pinField.length == 4) onSavePin(pinField) }, enabled = pinField.length == 4) { Text("Save PIN") }
-
-        Divider(Modifier.padding(vertical = 8.dp))
-
-        Text("Firebase (Firestore) Sync", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        Text(
-            if (firestoreReady) "Status: connected — entries sync in real time." else "Status: not configured — entries are not being saved.",
-            color = if (firestoreReady) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-            style = MaterialTheme.typography.bodySmall
-        )
-        Text("Enter the same values on both phones (from Firebase Console > Project settings > Your apps > Web app config).", style = MaterialTheme.typography.bodySmall)
-        OutlinedTextField(value = apiKey, onValueChange = { apiKey = it }, label = { Text("apiKey") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-        OutlinedTextField(value = appId, onValueChange = { appId = it }, label = { Text("appId") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-        OutlinedTextField(value = projectId, onValueChange = { projectId = it }, label = { Text("projectId") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-        OutlinedTextField(value = storageBucket, onValueChange = { storageBucket = it }, label = { Text("storageBucket (optional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-        OutlinedTextField(value = senderId, onValueChange = { senderId = it }, label = { Text("messagingSenderId (optional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-        Button(onClick = {
-            onSaveFirebaseConfig(
-                AppSettings.FirebaseConfig(
-                    apiKey = apiKey.trim(),
-                    appId = appId.trim(),
-                    projectId = projectId.trim(),
-                    storageBucket = storageBucket.trim(),
-                    messagingSenderId = senderId.trim()
+        GlassSurface(modifier = Modifier.fillMaxWidth()) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("APP LOCK", style = MaterialTheme.typography.labelLarge)
+                OutlinedTextField(
+                    value = pinField,
+                    onValueChange = { if (it.length <= 4) pinField = it.filter { c -> c.isDigit() } },
+                    label = { Text("4-digit PIN") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth()
                 )
-            )
-        }) { Text("Save Firebase Config") }
+                Button(onClick = { if (pinField.length == 4) onSavePin(pinField) }, enabled = pinField.length == 4) { Text("Save PIN") }
+            }
+        }
 
-        Divider(Modifier.padding(vertical = 8.dp))
+        GlassSurface(modifier = Modifier.fillMaxWidth()) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("FIREBASE (FIRESTORE) SYNC", style = MaterialTheme.typography.labelLarge)
+                Text(
+                    if (firestoreReady) "Status: connected — entries sync in real time." else "Status: not configured — entries are not being saved.",
+                    color = if (firestoreReady) Positive else MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Text("Enter the same values on both phones (from Firebase Console > Project settings > Your apps > Web app config).", style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(value = apiKey, onValueChange = { apiKey = it }, label = { Text("apiKey") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                OutlinedTextField(value = appId, onValueChange = { appId = it }, label = { Text("appId") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                OutlinedTextField(value = projectId, onValueChange = { projectId = it }, label = { Text("projectId") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                OutlinedTextField(value = storageBucket, onValueChange = { storageBucket = it }, label = { Text("storageBucket (optional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                OutlinedTextField(value = senderId, onValueChange = { senderId = it }, label = { Text("messagingSenderId (optional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                Button(onClick = {
+                    onSaveFirebaseConfig(
+                        AppSettings.FirebaseConfig(
+                            apiKey = apiKey.trim(),
+                            appId = appId.trim(),
+                            projectId = projectId.trim(),
+                            storageBucket = storageBucket.trim(),
+                            messagingSenderId = senderId.trim()
+                        )
+                    )
+                }) { Text("Save Firebase Config") }
+            }
+        }
 
-        Text("OpenAI (optional)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        Text("Used for natural-language Smart Add and AI summaries. Stored only on this device. Set a low spending cap on this key in your OpenAI dashboard.", style = MaterialTheme.typography.bodySmall)
-        OutlinedTextField(
-            value = keyField,
-            onValueChange = { keyField = it },
-            label = { Text("OpenAI API key") },
-            visualTransformation = PasswordVisualTransformation(),
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true
-        )
-        Button(onClick = { onSaveOpenAiKey(keyField.trim()) }) { Text("Save OpenAI Key") }
+        GlassSurface(modifier = Modifier.fillMaxWidth()) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("OPENAI (OPTIONAL)", style = MaterialTheme.typography.labelLarge)
+                Text(
+                    "Powers Smart Add parsing, Chat, Budget Suggestions, Anomaly Detection, and Goal Planning — all via gpt-4o-mini, called only when you tap a button, never automatically. Stored only on this device. Set a low spending cap on this key in your OpenAI dashboard.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                OutlinedTextField(
+                    value = keyField,
+                    onValueChange = { keyField = it },
+                    label = { Text("OpenAI API key") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                Button(onClick = { onSaveOpenAiKey(keyField.trim()) }) { Text("Save OpenAI Key") }
+            }
+        }
 
         Spacer(Modifier.height(32.dp))
     }

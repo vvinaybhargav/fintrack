@@ -56,6 +56,37 @@ data class EmergencyFund(
     val currentAmount: Double = 0.0
 )
 
+data class Goal(
+    val id: String = "",
+    val title: String = "",
+    val targetAmount: Double = 0.0,
+    val targetMonths: Int = 1,
+    val monthlyContribution: Double = 0.0,
+    val savedSoFar: Double = 0.0,
+    val createdAt: Long = System.currentTimeMillis()
+) {
+    fun toMap(): Map<String, Any?> = mapOf(
+        "title" to title,
+        "targetAmount" to targetAmount,
+        "targetMonths" to targetMonths,
+        "monthlyContribution" to monthlyContribution,
+        "savedSoFar" to savedSoFar,
+        "createdAt" to createdAt
+    )
+
+    companion object {
+        fun fromMap(id: String, map: Map<String, Any?>): Goal = Goal(
+            id = id,
+            title = map["title"] as? String ?: "",
+            targetAmount = (map["targetAmount"] as? Number)?.toDouble() ?: 0.0,
+            targetMonths = (map["targetMonths"] as? Number)?.toInt() ?: 1,
+            monthlyContribution = (map["monthlyContribution"] as? Number)?.toDouble() ?: 0.0,
+            savedSoFar = (map["savedSoFar"] as? Number)?.toDouble() ?: 0.0,
+            createdAt = (map["createdAt"] as? Number)?.toLong() ?: 0L
+        )
+    }
+}
+
 val DEFAULT_CATEGORIES = listOf(
     "EMI", "Health Insurance", "Car Insurance", "LIC", "Music Classes",
     "RD", "FD", "PPF", "SIP", "Groceries", "Eating Out", "Utilities", "Other"
