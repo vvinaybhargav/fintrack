@@ -52,6 +52,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val _loans = MutableStateFlow<List<Loan>>(emptyList())
     val loans: StateFlow<List<Loan>> = _loans.asStateFlow()
 
+    private val _bills = MutableStateFlow<List<com.household.finance.data.Bill>>(emptyList())
+    val bills: StateFlow<List<com.household.finance.data.Bill>> = _bills.asStateFlow()
+
     /** The two household profiles (e.g. Vinnu, Rukmini), shared via Firestore. */
     private val _profiles = MutableStateFlow<List<Profile>>(emptyList())
     val profiles: StateFlow<List<Profile>> = _profiles.asStateFlow()
@@ -105,6 +108,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     launch {
                         repository.observeLoans().collect { _loans.value = it }
+                    }
+                    launch {
+                        repository.observeBills().collect { _bills.value = it }
                     }
                     launch {
                         repository.observeProfiles().collect { list ->
@@ -296,5 +302,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setLoanDueDate(id: String, dueDate: String?) {
         viewModelScope.launch { repository.setLoanDueDate(id, dueDate) }
+    }
+
+    /** New bills (EMIs, credit card dues) are always owned by whoever's signed in on this device. */
+    fun addBill(bill: com.household.finance.data.Bill) {
+        viewModelScope.launch { repository.addBill(bill.copy(owner = _currentProfile.value ?: bill.owner)) }
+    }
+
+    fun deleteBill(id: String) {
+        viewModelScope.launch { repository.deleteBill(id) }
+    }
+
+    fun markBillPaid(id: String) {
+        viewModelScope.launch { repository.markBillPaid(id, _currentProfile.value ?: "") }
     }
 }

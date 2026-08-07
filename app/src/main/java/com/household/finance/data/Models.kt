@@ -179,6 +179,52 @@ data class Loan(
     }
 }
 
+enum class BillType { EMI, CREDIT_CARD, OTHER }
+
+/**
+ * A recurring external payable (EMI, credit card due, or any other bill) with a due date and,
+ * optionally, which account it gets debited from when marked paid. Distinct from [Loan], which
+ * is peer-to-peer between the two profiles - this is money owed to someone outside the household.
+ */
+data class Bill(
+    val id: String = "",
+    val name: String = "",
+    val amount: Double = 0.0,
+    /** Next due date, ISO yyyy-MM-dd. */
+    val dueDate: String = "",
+    val accountName: String? = null,
+    val type: BillType = BillType.OTHER,
+    /** If true, marking paid advances dueDate by a month instead of deleting the bill. */
+    val recurring: Boolean = true,
+    val owner: String = "",
+    val createdAt: Long = System.currentTimeMillis()
+) {
+    fun toMap(): Map<String, Any?> = mapOf(
+        "name" to name,
+        "amount" to amount,
+        "dueDate" to dueDate,
+        "accountName" to accountName,
+        "type" to type.name,
+        "recurring" to recurring,
+        "owner" to owner,
+        "createdAt" to createdAt
+    )
+
+    companion object {
+        fun fromMap(id: String, map: Map<String, Any?>): Bill = Bill(
+            id = id,
+            name = map["name"] as? String ?: "",
+            amount = (map["amount"] as? Number)?.toDouble() ?: 0.0,
+            dueDate = map["dueDate"] as? String ?: "",
+            accountName = map["accountName"] as? String,
+            type = runCatching { BillType.valueOf(map["type"] as String) }.getOrDefault(BillType.OTHER),
+            recurring = map["recurring"] as? Boolean ?: true,
+            owner = map["owner"] as? String ?: "",
+            createdAt = (map["createdAt"] as? Number)?.toLong() ?: 0L
+        )
+    }
+}
+
 /** One of the two household profiles. PIN is shared via Firestore so either phone can switch to either profile. */
 data class Profile(
     val name: String = "",

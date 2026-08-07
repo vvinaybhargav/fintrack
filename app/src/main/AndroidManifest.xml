@@ -28,6 +28,13 @@
             android:taskAffinity=""
             android:theme="@style/Theme.QuickAdd" />
 
+        <activity
+            android:name=".BillConfirmActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.QuickAdd" />
+
         <receiver
             android:name=".widget.HouseholdWidgetReceiver"
             android:exported="false">

@@ -54,6 +54,12 @@ interface FinanceRepository {
     /** Per-category monthly budget limits, shared across the household. */
     fun observeBudgets(): Flow<Map<String, Double>>
     suspend fun setBudgetLimit(category: String, limit: Double)
+    fun observeBills(): Flow<List<Bill>>
+    suspend fun addBill(bill: Bill)
+    suspend fun deleteBill(id: String)
+    /** Debits the tagged account (if any) and, if [Bill.recurring], advances dueDate by a month;
+     *  otherwise deletes the bill. Safe to call even if the bill has since been deleted elsewhere. */
+    suspend fun markBillPaid(id: String, editedBy: String)
     /** Renames an account and re-tags every entry referencing it (batched). Balance/owner carry over. */
     suspend fun renameAccount(oldName: String, newName: String)
     /** Stops tracking this account. Entries that referenced it keep their historical accountName as-is. */
@@ -135,6 +141,9 @@ class FirestoreFinanceRepository(private val context: Context) : FinanceReposito
 
     private fun profilesCollection() =
         firestore?.collection("workspaces")?.document(WORKSPACE_ID)?.collection("profiles")
+
+    private fun billsCollection() =
+        firestore?.collection("workspaces")?.document(WORKSPACE_ID)?.collection("bills")
 
     /** Normalizes an account name to a stable doc id so "icici"/"ICICI"/"Icici" all resolve to one account. */
     private fun accountDocId(name: String) =
@@ -281,6 +290,58 @@ class FirestoreFinanceRepository(private val context: Context) : FinanceReposito
 
     override suspend fun setLoanDueDate(id: String, dueDate: String?) {
         loansCollection()?.document(id)?.set(mapOf("dueDate" to dueDate), SetOptions.merge())
+    }
+
+    override fun observeBills(): Flow<List<Bill>> = callbackFlow {
+        val col = billsCollection()
+        if (col == null) {
+            trySend(emptyList())
+            awaitClose { }
+            return@callbackFlow
+        }
+        val registration = col.addSnapshotListener { snapshot, _ ->
+            val list = snapshot?.documents?.mapNotNull { doc ->
+                doc.data?.let { Bill.fromMap(doc.id, it) }
+            } ?: emptyList()
+            trySend(list.sortedBy { it.dueDate })
+        }
+        awaitClose { registration.remove() }
+    }
+
+    override suspend fun addBill(bill: Bill) {
+        val col = billsCollection() ?: return
+        val docRef = if (bill.id.isBlank()) col.document() else col.document(bill.id)
+        docRef.set(bill.toMap())
+    }
+
+    override suspend fun deleteBill(id: String) {
+        billsCollection()?.document(id)?.delete()
+    }
+
+    override suspend fun markBillPaid(id: String, editedBy: String) {
+        val col = billsCollection() ?: return
+        val doc = col.document(id).get().awaitTask()
+        val bill = doc.data?.let { Bill.fromMap(doc.id, it) } ?: return
+
+        if (!bill.accountName.isNullOrBlank()) {
+            adjustAccountBalance(bill.accountName, -bill.amount, bill.owner, isNewAccount = false, editedBy = editedBy)
+        }
+
+        if (bill.recurring) {
+            val nextDueDate = addOneMonth(bill.dueDate)
+            col.document(id).set(mapOf("dueDate" to nextDueDate), SetOptions.merge()).awaitTask()
+        } else {
+            col.document(id).delete().awaitTask()
+        }
+    }
+
+    private fun addOneMonth(isoDate: String): String {
+        val format = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+        val date = runCatching { format.parse(isoDate) }.getOrNull() ?: java.util.Date()
+        val cal = java.util.Calendar.getInstance()
+        cal.time = date
+        cal.add(java.util.Calendar.MONTH, 1)
+        return format.format(cal.time)
     }
 
     override suspend fun deleteLoan(id: String) {

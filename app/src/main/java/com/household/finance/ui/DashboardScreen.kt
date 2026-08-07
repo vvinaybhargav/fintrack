@@ -30,6 +30,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.household.finance.data.Account
+import com.household.finance.data.Bill
+import com.household.finance.data.BillType
 import com.household.finance.data.Bucket
 import com.household.finance.data.CategoryListLength
 import com.household.finance.data.Entry
@@ -70,6 +72,7 @@ fun DashboardScreen(
     accounts: List<Account>,
     goals: List<Goal>,
     loans: List<Loan>,
+    bills: List<Bill>,
     categoryLength: CategoryListLength,
     jointFundAmount: Double,
     personalFundAmount: Double,
@@ -85,7 +88,10 @@ fun DashboardScreen(
     onAddGoalContribution: (String, Double) -> Unit,
     onDeleteGoal: (String) -> Unit,
     onSetLoanSettled: (String, Boolean) -> Unit,
-    onSetLoanDueDate: (String, String?) -> Unit
+    onSetLoanDueDate: (String, String?) -> Unit,
+    onAddBill: (Bill) -> Unit,
+    onDeleteBill: (String) -> Unit,
+    onMarkBillPaid: (String) -> Unit
 ) {
     var view by remember { mutableStateOf(DashboardView.PERSONAL) }
     // Emergency fund and its edit callback both follow whichever view (Personal/Joint) is selected.
@@ -126,6 +132,7 @@ fun DashboardScreen(
     val activeGoals = remember(goals) { goals.filter { !it.completed } }
     val completedGoals = remember(goals) { goals.filter { it.completed } }
     val trend = remember(filteredEntries) { Calculations.monthlyTrend(filteredEntries) }
+    val sortedBills = remember(bills) { bills.sortedBy { it.dueDate } }
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
@@ -235,6 +242,22 @@ fun DashboardScreen(
                             )
                         }
                     }
+                }
+            }
+        }
+
+        item {
+            GlassSurface(modifier = Modifier.fillMaxWidth()) {
+                Column {
+                    SectionLabel(Icons.Filled.Repeat, "BILLS & CREDIT CARDS")
+                    Spacer(Modifier.height(10.dp))
+                    BillsSection(
+                        bills = sortedBills,
+                        nameMe = nameMe,
+                        onAddBill = onAddBill,
+                        onDeleteBill = onDeleteBill,
+                        onMarkPaid = onMarkBillPaid
+                    )
                 }
             }
         }
@@ -460,6 +483,135 @@ private fun HeroStat(label: String, value: String, accent: Color, modifier: Modi
             Text(label, style = MaterialTheme.typography.labelLarge)
             Spacer(Modifier.height(4.dp))
             Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = accent)
+        }
+    }
+}
+
+@Composable
+private fun BillsSection(bills: List<Bill>, nameMe: String, onAddBill: (Bill) -> Unit, onDeleteBill: (String) -> Unit, onMarkPaid: (String) -> Unit) {
+    var adding by remember { mutableStateOf(false) }
+    val today = remember { java.text.SimpleDateFormat("yyyy-MM-dd", Locale.US).format(java.util.Date()) }
+
+    if (bills.isEmpty() && !adding) {
+        Text("No EMIs or credit cards tracked yet.", style = MaterialTheme.typography.bodySmall)
+        Spacer(Modifier.height(8.dp))
+    }
+
+    bills.forEach { bill ->
+        var confirmingPaid by remember(bill.id) { mutableStateOf(false) }
+        val overdue = bill.dueDate.isNotBlank() && bill.dueDate < today
+        Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Column {
+                    Text(bill.name, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "${formatInr(bill.amount)} · due ${bill.dueDate}" +
+                            (if (overdue) " — overdue" else "") +
+                            (bill.accountName?.let { " · $it" } ?: ""),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (overdue) Warning else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (confirmingPaid) {
+                    Row {
+                        TextButton(onClick = { onMarkPaid(bill.id); confirmingPaid = false }) { Text("Yes, paid") }
+                        TextButton(onClick = { confirmingPaid = false }) { Text("No") }
+                    }
+                } else {
+                    Row {
+                        TextButton(onClick = { confirmingPaid = true }) { Text("Mark Paid") }
+                        TextButton(onClick = { onDeleteBill(bill.id) }) { Text("Delete") }
+                    }
+                }
+            }
+            if (confirmingPaid && !bill.accountName.isNullOrBlank()) {
+                Text(
+                    "This debits ${formatInr(bill.amount)} from ${bill.accountName}.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
+    }
+
+    if (adding) {
+        AddBillForm(
+            onAdd = { bill -> onAddBill(bill); adding = false },
+            onCancel = { adding = false }
+        )
+    } else {
+        TextButton(onClick = { adding = true }) { Text("+ Add EMI / credit card") }
+    }
+}
+
+@Composable
+private fun AddBillForm(onAdd: (Bill) -> Unit, onCancel: () -> Unit) {
+    var name by remember { mutableStateOf("") }
+    var amount by remember { mutableStateOf("") }
+    var dueDate by remember { mutableStateOf("") }
+    var accountName by remember { mutableStateOf("") }
+    var type by remember { mutableStateOf(BillType.EMI) }
+
+    Column {
+        OutlinedTextField(
+            value = name,
+            onValueChange = { name = it },
+            label = { Text("Name (e.g. ICICI EMI, HDFC Card)") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf(BillType.EMI, BillType.CREDIT_CARD, BillType.OTHER).forEach { option ->
+                FilterChip(
+                    selected = type == option,
+                    onClick = { type = option },
+                    label = { Text(option.name.replace("_", " ")) }
+                )
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        OutlinedTextField(
+            value = amount,
+            onValueChange = { amount = it.filter { c -> c.isDigit() } },
+            label = { Text("Amount due") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(6.dp))
+        OutlinedTextField(
+            value = dueDate,
+            onValueChange = { dueDate = it },
+            label = { Text("Due date (yyyy-MM-dd)") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(6.dp))
+        OutlinedTextField(
+            value = accountName,
+            onValueChange = { accountName = it },
+            label = { Text("Debit from account (optional)") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(8.dp))
+        Row {
+            TextButton(
+                onClick = {
+                    val amt = amount.toDoubleOrNull() ?: return@TextButton
+                    if (name.isBlank() || dueDate.isBlank() || amt <= 0) return@TextButton
+                    onAdd(
+                        Bill(
+                            name = name.trim(),
+                            amount = amt,
+                            dueDate = dueDate.trim(),
+                            accountName = accountName.trim().ifBlank { null },
+                            type = type
+                        )
+                    )
+                },
+                enabled = name.isNotBlank() && dueDate.isNotBlank() && (amount.toDoubleOrNull() ?: 0.0) > 0
+            ) { Text("Add") }
+            TextButton(onClick = onCancel) { Text("Cancel") }
         }
     }
 }

@@ -116,6 +116,7 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
     val goals by viewModel.goals.collectAsStateWithLifecycle()
     val accounts by viewModel.accounts.collectAsStateWithLifecycle()
     val loans by viewModel.loans.collectAsStateWithLifecycle()
+    val bills by viewModel.bills.collectAsStateWithLifecycle()
     val nameMe by viewModel.nameMe.collectAsStateWithLifecycle()
     val nameWife = profiles.map { it.name }.firstOrNull { it != nameMe } ?: ""
     val openAiKey by viewModel.settings.openAiKeyFlow.collectAsStateWithLifecycle(initialValue = "")
@@ -130,6 +131,7 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
     // shown to everyone as a safe default.
     val myAccounts = accounts.filter { it.owner.isBlank() || it.owner == nameMe }
     val myGoals = goals.filter { it.owner.isBlank() || it.owner == nameMe }
+    val myBills = bills.filter { it.owner.isBlank() || it.owner == nameMe }
 
     var editingEntry by remember { mutableStateOf<Entry?>(null) }
 
@@ -173,6 +175,7 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                     accounts = myAccounts,
                     goals = myGoals,
                     loans = loans,
+                    bills = myBills,
                     categoryLength = categoryLength,
                     jointFundAmount = emergencyFund.currentAmount,
                     personalFundAmount = personalEmergencyFund.currentAmount,
@@ -188,7 +191,10 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                     onAddGoalContribution = { id, amount -> viewModel.addGoalContribution(id, amount) },
                     onDeleteGoal = { viewModel.deleteGoal(it) },
                     onSetLoanSettled = { id, settled -> viewModel.setLoanSettled(id, settled) },
-                    onSetLoanDueDate = { id, date -> viewModel.setLoanDueDate(id, date) }
+                    onSetLoanDueDate = { id, date -> viewModel.setLoanDueDate(id, date) },
+                    onAddBill = { viewModel.addBill(it) },
+                    onDeleteBill = { viewModel.deleteBill(it) },
+                    onMarkBillPaid = { viewModel.markBillPaid(it) }
                 )
             }
             composable("add") {
