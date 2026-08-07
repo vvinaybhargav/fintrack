@@ -14,10 +14,14 @@ import com.household.finance.data.Profile
 import com.household.finance.logic.Calculations
 import com.household.finance.logic.DashboardSummary
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
@@ -26,7 +30,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = FirestoreFinanceRepository(application)
 
     private val _entries = MutableStateFlow<List<Entry>>(emptyList())
-    val entries: StateFlow<List<Entry>> = _entries.asStateFlow()
+    val entries: StateFlow<List<Entry>> = combine(_entries, _currentProfile) { list, profile ->
+        if (profile == null) emptyList()
+        else list.filter { it.bucket == com.household.finance.data.Bucket.JOINT || it.person.equals(profile, ignoreCase = true) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _emergencyFund = MutableStateFlow(EmergencyFund())
     val emergencyFund: StateFlow<EmergencyFund> = _emergencyFund.asStateFlow()
@@ -37,26 +44,39 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val _budgets = MutableStateFlow<Map<String, Double>>(emptyMap())
     val budgets: StateFlow<Map<String, Double>> = _budgets.asStateFlow()
 
-    private val _summary = MutableStateFlow(Calculations.summarize(emptyList()))
-    val summary: StateFlow<DashboardSummary> = _summary.asStateFlow()
+    val summary: StateFlow<DashboardSummary> = entries.map {
+        Calculations.summarize(it)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Calculations.summarize(emptyList()))
 
     private val _firestoreReady = MutableStateFlow(false)
     val firestoreReady: StateFlow<Boolean> = _firestoreReady.asStateFlow()
 
     private val _goals = MutableStateFlow<List<Goal>>(emptyList())
-    val goals: StateFlow<List<Goal>> = _goals.asStateFlow()
+    val goals: StateFlow<List<Goal>> = combine(_goals, _currentProfile) { list, profile ->
+        if (profile == null) emptyList()
+        else list.filter { it.owner.isBlank() || it.owner.equals(profile, ignoreCase = true) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _accounts = MutableStateFlow<List<Account>>(emptyList())
-    val accounts: StateFlow<List<Account>> = _accounts.asStateFlow()
+    val accounts: StateFlow<List<Account>> = combine(_accounts, _currentProfile) { list, profile ->
+        if (profile == null) emptyList()
+        else list.filter { it.owner.isBlank() || it.owner.equals(profile, ignoreCase = true) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _loans = MutableStateFlow<List<Loan>>(emptyList())
     val loans: StateFlow<List<Loan>> = _loans.asStateFlow()
 
     private val _bills = MutableStateFlow<List<com.household.finance.data.Bill>>(emptyList())
-    val bills: StateFlow<List<com.household.finance.data.Bill>> = _bills.asStateFlow()
+    val bills: StateFlow<List<com.household.finance.data.Bill>> = combine(_bills, _currentProfile) { list, profile ->
+        if (profile == null) emptyList()
+        else list.filter { it.owner.isBlank() || it.owner.equals(profile, ignoreCase = true) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _activeLoans = MutableStateFlow<List<com.household.finance.data.ActiveLoan>>(emptyList())
-    val activeLoans: StateFlow<List<com.household.finance.data.ActiveLoan>> = _activeLoans.asStateFlow()
+    val activeLoans: StateFlow<List<com.household.finance.data.ActiveLoan>> = combine(_activeLoans, _currentProfile) { list, profile ->
+        if (profile == null) emptyList()
+        else list.filter { it.owner.isBlank() || it.owner.equals(profile, ignoreCase = true) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /** The two household profiles (e.g. Vinnu, Rukmini), shared via Firestore. */
     private val _profiles = MutableStateFlow<List<Profile>>(emptyList())
@@ -90,7 +110,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     launch {
                         repository.observeEntries().collect { list ->
                             _entries.value = list
-                            _summary.value = Calculations.summarize(list)
                         }
                     }
                     launch {
@@ -169,7 +188,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setSalaryAmount(amount: Double) {
         val name = _currentProfile.value ?: return
-        viewModelScope.launch { repository.setSalaryIncome(name, amount) }
+        viewModelScope.launch {
+            repository.setSalaryIncome(name, amount)
+            repository.setProfileSalaryAmount(name, amount)
+        }
     }
 
     fun setDefaultAccount(accountName: String?) {

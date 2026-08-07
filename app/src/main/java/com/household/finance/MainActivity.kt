@@ -128,16 +128,10 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
     val defaultProfile by viewModel.settings.defaultProfileFlow.collectAsStateWithLifecycle(initialValue = null)
     val scope = rememberCoroutineScope()
 
-    // Accounts/goals scoped to whoever's signed in - blank owner means "predates ownership tracking",
-    // shown to everyone as a safe default.
-    val myAccounts = accounts.filter { it.owner.isBlank() || it.owner == nameMe }
-    val myGoals = goals.filter { it.owner.isBlank() || it.owner == nameMe }
-    val myBills = bills.filter { it.owner.isBlank() || it.owner == nameMe }
-
     var editingEntry by remember { mutableStateOf<Entry?>(null) }
 
-    LaunchedEffect(summary.surplus, myAccounts) {
-        WidgetUpdater.update(context, summary.surplus, myAccounts)
+    LaunchedEffect(summary.surplus, accounts) {
+        WidgetUpdater.update(context, summary.surplus, accounts)
     }
 
     Scaffold(
@@ -171,13 +165,16 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                 val categoryLength by viewModel.settings.categoryLengthFlow.collectAsStateWithLifecycle(
                     initialValue = com.household.finance.data.CategoryListLength.MEDIUM
                 )
-                val defaultAccount = profiles.find { it.name == nameMe }?.defaultAccountName
+                val myProfile = profiles.find { it.name == nameMe }
+                val defaultAccount = myProfile?.defaultAccountName
+                val salaryAmount = myProfile?.salaryAmount
+                val salaryCreditDate = myProfile?.salaryCreditDate
                 DashboardScreen(
                     entries = entries,
-                    accounts = myAccounts,
-                    goals = myGoals,
+                    accounts = accounts,
+                    goals = goals,
                     loans = loans,
-                    bills = myBills,
+                    bills = bills,
                     categoryLength = categoryLength,
                     jointFundAmount = emergencyFund.currentAmount,
                     personalFundAmount = personalEmergencyFund.currentAmount,
@@ -185,6 +182,8 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                     nameMe = nameMe,
                     defaultAccount = defaultAccount,
                     activeLoans = activeLoans,
+                    salaryAmount = salaryAmount,
+                    salaryCreditDate = salaryCreditDate,
                     onSetJointFund = { viewModel.setEmergencyFund(it) },
                     onSetPersonalFund = { viewModel.setPersonalEmergencyFund(it) },
                     onSetBudgetLimit = { category, limit -> viewModel.setBudgetLimit(category, limit) },
@@ -208,7 +207,7 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                             amount = template.monthlyAmount,
                             frequency = com.household.finance.data.Frequency.MONTHLY,
                             note = template.note,
-                            accountName = defaultAccount ?: myAccounts.firstOrNull()?.name,
+                            accountName = defaultAccount ?: accounts.firstOrNull()?.name,
                             toAccountName = template.toAccountName
                         )
                         viewModel.addEntry(entry)

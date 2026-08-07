@@ -83,6 +83,7 @@ interface FinanceRepository {
     fun observeProfiles(): Flow<List<Profile>>
     suspend fun saveProfile(profile: Profile)
     suspend fun setProfileSalaryDate(name: String, day: Int?)
+    suspend fun setProfileSalaryAmount(name: String, amount: Double)
     suspend fun setProfileDefaultAccount(name: String, accountName: String?)
     /** Renames a profile everywhere it's referenced (entries, goals, accounts, loans), then removes
      *  the old profile doc. Best-effort in batches - if interrupted partway, re-running with the
@@ -404,6 +405,11 @@ class FirestoreFinanceRepository(private val context: Context) : FinanceReposito
     override suspend fun setProfileSalaryDate(name: String, day: Int?) {
         val col = profilesCollection() ?: return
         col.document(name.trim().uppercase()).set(mapOf("salaryCreditDate" to day), SetOptions.merge())
+    }
+
+    override suspend fun setProfileSalaryAmount(name: String, amount: Double) {
+        val col = profilesCollection() ?: return
+        col.document(name.trim().uppercase()).set(mapOf("salaryAmount" to amount), SetOptions.merge())
     }
 
     override suspend fun setProfileDefaultAccount(name: String, accountName: String?) {

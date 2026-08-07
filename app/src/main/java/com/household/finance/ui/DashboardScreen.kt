@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.VerifiedUser
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -84,6 +85,8 @@ fun DashboardScreen(
     nameMe: String,
     defaultAccount: String?,
     activeLoans: List<com.household.finance.data.ActiveLoan>,
+    salaryAmount: Double?,
+    salaryCreditDate: Int?,
     onSetJointFund: (Double) -> Unit,
     onSetPersonalFund: (Double) -> Unit,
     onSetBudgetLimit: (String, Double) -> Unit,
@@ -109,6 +112,25 @@ fun DashboardScreen(
         Calculations.getCommitmentsChecklist(entries, nameMe)
     }
     var view by remember { mutableStateOf(DashboardView.PERSONAL) }
+    var showQuickFillDialogFor by remember { mutableStateOf<Triple<String, Double, String>?>(null) }
+
+    val showSalaryNudge = remember(entries, salaryCreditDate, salaryAmount, nameMe) {
+        if (salaryCreditDate == null || salaryAmount == null || salaryAmount <= 0.0) false
+        else {
+            val cal = Calendar.getInstance()
+            val todayDay = cal.get(Calendar.DAY_OF_MONTH)
+            val currentYear = cal.get(Calendar.YEAR)
+            val currentMonth = cal.get(Calendar.MONTH)
+
+            val hasSalaryThisMonth = entries.any {
+                val eCal = Calendar.getInstance().apply { timeInMillis = it.createdAt }
+                eCal.get(Calendar.YEAR) == currentYear && eCal.get(Calendar.MONTH) == currentMonth &&
+                it.person.equals(nameMe, ignoreCase = true) &&
+                it.category.equals("Salary", ignoreCase = true)
+            }
+            !hasSalaryThisMonth && todayDay >= salaryCreditDate
+        }
+    }
     // Emergency fund and its edit callback both follow whichever view (Personal/Joint) is selected.
     val emergencyFundAmount = if (view == DashboardView.PERSONAL) personalFundAmount else jointFundAmount
     val onSetEmergencyFund = if (view == DashboardView.PERSONAL) onSetPersonalFund else onSetJointFund
@@ -191,6 +213,48 @@ fun DashboardScreen(
             }
         }
 
+        // --- Salary Credit Nudge Banner ---
+        if (showSalaryNudge && salaryAmount != null) {
+            item {
+                GlassSurface(
+                    modifier = Modifier.fillMaxWidth().animateContentSize(),
+                    borderGradient = Brush.horizontalGradient(listOf(Positive, Cyan))
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Icon(Icons.Filled.Lightbulb, contentDescription = "Reminder", tint = Positive)
+                            Text("SALARY CREDIT DETECTED", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = Positive)
+                        }
+                        Text(
+                            "It's salary time! Your expected credit date was the ${salaryCreditDate}th. Would you like to log your ₹${salaryAmount.toInt()} salary into your default account?",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Button(
+                                onClick = {
+                                    val calendar = Calendar.getInstance()
+                                    val monthName = calendar.getDisplayName(Calendar.MONTH, Calendar.SHORT, java.util.Locale.US)
+                                    val entry = Entry(
+                                        person = nameMe,
+                                        type = com.household.finance.data.EntryType.INCOME,
+                                        bucket = com.household.finance.data.Bucket.PERSONAL,
+                                        category = "Salary",
+                                        amount = salaryAmount,
+                                        frequency = com.household.finance.data.Frequency.MONTHLY,
+                                        note = "Salary Credit ($monthName)",
+                                        accountName = defaultAccount ?: accounts.firstOrNull()?.name
+                                    )
+                                    onCompleteCommitment(entry)
+                                }
+                            ) {
+                                Text("Log Salary")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // --- Glanceable hero: the numbers that matter for the selected view, big, at the top ---
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -218,6 +282,130 @@ fun DashboardScreen(
                         value = String.format(Locale.US, "%.0f%%", summary.savingsRatePct),
                         accent = Positive,
                         modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
+
+        // --- Unified Budget Progress Card ---
+        val currentMonthExpenses = remember(entries) {
+            val cal = Calendar.getInstance()
+            val curYr = cal.get(Calendar.YEAR)
+            val curMo = cal.get(Calendar.MONTH)
+            entries.filter {
+                val eCal = Calendar.getInstance().apply { timeInMillis = it.createdAt }
+                eCal.get(Calendar.YEAR) == curYr && eCal.get(Calendar.MONTH) == curMo &&
+                it.type == com.household.finance.data.EntryType.EXPENSE
+            }
+        }
+        val categorySpends = remember(currentMonthExpenses) {
+            currentMonthExpenses.groupBy { it.category }.mapValues { (_, list) -> list.sumOf { it.amount } }
+        }
+        val categoriesWithBudgetsOrSpend = remember(budgets, categorySpends) {
+            (budgets.keys + categorySpends.keys).distinct().sorted()
+        }
+        
+        if (categoriesWithBudgetsOrSpend.isNotEmpty()) {
+            item {
+                var selectedCoachCategory by remember { mutableStateOf<String?>(null) }
+                var selectedCoachLimit by remember { mutableStateOf<Double?>(null) }
+
+                GlassSurface(modifier = Modifier.fillMaxWidth()) {
+                    Column {
+                        SectionLabel(Icons.Filled.PieChart, "MONTHLY BUDGET PROGRESS")
+                        Spacer(Modifier.height(10.dp))
+                        
+                        categoriesWithBudgetsOrSpend.forEach { category ->
+                            val spent = categorySpends[category] ?: 0.0
+                            val limit = budgets[category]
+                            
+                            val progress = if (limit != null && limit > 0) spent / limit else 0.0
+                            val progressColor = when {
+                                limit == null -> Cyan
+                                progress < 0.7 -> Positive
+                                progress <= 1.0 -> Warning
+                                else -> MaterialTheme.colorScheme.error
+                            }
+
+                            Column(Modifier.padding(vertical = 6.dp)) {
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(category, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                        val subText = if (limit != null) {
+                                            "Spent ${formatInr(spent)} of ${formatInr(limit)}"
+                                        } else {
+                                            "Spent ${formatInr(spent)} (No limit set)"
+                                        }
+                                        Text(subText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    
+                                    IconButton(
+                                        onClick = {
+                                            selectedCoachCategory = category
+                                            selectedCoachLimit = limit
+                                        }
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.AutoAwesome,
+                                            contentDescription = "AI Coach Insight",
+                                            tint = progressColor
+                                        )
+                                    }
+                                }
+                                
+                                if (limit != null && limit > 0) {
+                                    Spacer(Modifier.height(4.dp))
+                                    Box(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .height(8.dp)
+                                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                            .background(Color(0x11FFFFFF))
+                                    ) {
+                                        Box(
+                                            Modifier
+                                                .fillMaxWidth(fraction = progress.toFloat().coerceIn(0f, 1f))
+                                                .fillMaxHeight()
+                                                .clip(androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                                .background(progressColor)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // AI Category Coach Dialog
+                if (selectedCoachCategory != null) {
+                    val cat = selectedCoachCategory!!
+                    val lim = selectedCoachLimit
+                    val coachInsightText = remember(cat, entries, lim) {
+                        Calculations.getCategoryInsights(cat, entries, lim)
+                    }
+                    AlertDialog(
+                        onDismissRequest = {
+                            selectedCoachCategory = null
+                            selectedCoachLimit = null
+                        },
+                        title = {
+                            Text("AI Coach: $cat Insight", fontWeight = FontWeight.Bold)
+                        },
+                        text = {
+                            Text(coachInsightText, style = MaterialTheme.typography.bodyMedium)
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                selectedCoachCategory = null
+                                selectedCoachLimit = null
+                            }) {
+                                Text("Got it")
+                            }
+                        }
                     )
                 }
             }
@@ -313,14 +501,28 @@ fun DashboardScreen(
                         
                         annualCommitments.forEach { (name, amount, dueMonth) ->
                             val isReady = sinkingFundBalance >= amount
+                            val shortfall = amount - sinkingFundBalance
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column {
+                                Column(Modifier.weight(1f)) {
                                     Text(name, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
                                     Text("Due in $dueMonth · ${formatInr(amount)} total", style = MaterialTheme.typography.bodySmall)
+                                    if (!isReady) {
+                                        Text(
+                                            text = "Transfer Shortfall",
+                                            color = Cyan,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier
+                                                .clickable {
+                                                    showQuickFillDialogFor = Triple(name, shortfall, dueMonth)
+                                                }
+                                                .padding(vertical = 2.dp)
+                                        )
+                                    }
                                 }
                                 Box(
                                     modifier = Modifier
@@ -329,7 +531,7 @@ fun DashboardScreen(
                                         .padding(horizontal = 8.dp, vertical = 4.dp)
                                 ) {
                                     Text(
-                                        text = if (isReady) "READY" else "SHORT BY ${formatInr(amount - sinkingFundBalance)}",
+                                        text = if (isReady) "READY" else "SHORT BY ${formatInr(shortfall)}",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = if (isReady) Positive else Warning,
                                         fontWeight = FontWeight.Bold
@@ -339,6 +541,46 @@ fun DashboardScreen(
                         }
                     }
                 }
+            }
+        }
+
+        // --- Sinking Fund Quick-Fill Dialog ---
+        if (showQuickFillDialogFor != null) {
+            val (name, shortfall, dueMonth) = showQuickFillDialogFor!!
+            item {
+                AlertDialog(
+                    onDismissRequest = { showQuickFillDialogFor = null },
+                    title = { Text("Transfer Shortfall", fontWeight = FontWeight.Bold) },
+                    text = {
+                        Text("Would you like to transfer the shortfall of ${formatInr(shortfall)} from your default account (${defaultAccount ?: "available accounts"}) to the Sinking Fund to make the premium for \"$name\" ready?", style = MaterialTheme.typography.bodyMedium)
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                val transferEntry = Entry(
+                                    person = nameMe,
+                                    type = com.household.finance.data.EntryType.SAVINGS,
+                                    bucket = com.household.finance.data.Bucket.PERSONAL,
+                                    category = "Other",
+                                    amount = shortfall,
+                                    frequency = com.household.finance.data.Frequency.MONTHLY,
+                                    note = "Sinking Fund top-up for $name",
+                                    accountName = defaultAccount ?: accounts.firstOrNull()?.name,
+                                    toAccountName = "Sinking Fund"
+                                )
+                                onCompleteCommitment(transferEntry)
+                                showQuickFillDialogFor = null
+                            }
+                        ) {
+                            Text("Transfer")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showQuickFillDialogFor = null }) {
+                            Text("Cancel")
+                        }
+                    }
+                )
             }
         }
 

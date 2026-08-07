@@ -247,4 +247,72 @@ object Calculations {
         }
         return nudges
     }
+
+    /** Calculates MoM insights for a specific category. */
+    fun getCategoryInsights(category: String, entries: List<Entry>, budgetLimit: Double?): String {
+        val cal = Calendar.getInstance()
+        val curYr = cal.get(Calendar.YEAR)
+        val curMo = cal.get(Calendar.MONTH)
+
+        // Current month's spend for this category
+        val currentMonthSpent = entries.filter {
+            val eCal = Calendar.getInstance().apply { timeInMillis = it.createdAt }
+            eCal.get(Calendar.YEAR) == curYr && eCal.get(Calendar.MONTH) == curMo &&
+            it.type == EntryType.EXPENSE && it.category.equals(category, ignoreCase = true)
+        }.sumOf { it.amount }
+
+        // Previous month's spend for this category
+        val prevMonthSpent = entries.filter {
+            val eCal = Calendar.getInstance().apply { timeInMillis = it.createdAt }
+            val itemYr = eCal.get(Calendar.YEAR)
+            val itemMo = eCal.get(Calendar.MONTH)
+            val targetYr = if (curMo == 0) curYr - 1 else curYr
+            val targetMo = if (curMo == 0) 11 else curMo - 1
+            itemYr == targetYr && itemMo == targetMo &&
+            it.type == EntryType.EXPENSE && it.category.equals(category, ignoreCase = true)
+        }.sumOf { it.amount }
+
+        // 3-month average spent (excluding current month)
+        val historicalSpends = mutableListOf<Double>()
+        for (i in 1..3) {
+            val targetMonthIndex = curMo - i
+            val targetYr = if (targetMonthIndex < 0) curYr - 1 else curYr
+            val targetMo = if (targetMonthIndex < 0) 12 + targetMonthIndex else targetMonthIndex
+            val spentInMonth = entries.filter {
+                val eCal = Calendar.getInstance().apply { timeInMillis = it.createdAt }
+                eCal.get(Calendar.YEAR) == targetYr && eCal.get(Calendar.MONTH) == targetMo &&
+                it.type == EntryType.EXPENSE && it.category.equals(category, ignoreCase = true)
+            }.sumOf { it.amount }
+            historicalSpends.add(spentInMonth)
+        }
+        val avg3Months = historicalSpends.filter { it > 0.0 }.average()
+
+        val diffPct = if (prevMonthSpent > 0) {
+            (((currentMonthSpent - prevMonthSpent) / prevMonthSpent) * 100).toInt()
+        } else 0
+
+        val limitMsg = if (budgetLimit != null) {
+            val remaining = (budgetLimit - currentMonthSpent).coerceAtLeast(0.0)
+            if (currentMonthSpent > budgetLimit) {
+                "You have exceeded your limit of ₹${budgetLimit.toInt()} by ₹${(currentMonthSpent - budgetLimit).toInt()}."
+            } else {
+                "You have ₹${remaining.toInt()} remaining of your ₹${budgetLimit.toInt()} limit."
+            }
+        } else {
+            "No budget limit is configured for this category. Consider setting one in Settings."
+        }
+
+        val trendMsg = when {
+            prevMonthSpent == 0.0 -> "This is your first recorded spending in this category recently."
+            currentMonthSpent > prevMonthSpent -> "This is higher than last month's spend of ₹${prevMonthSpent.toInt()} (+${diffPct}%)."
+            currentMonthSpent < prevMonthSpent -> "This is lower than last month's spend of ₹${prevMonthSpent.toInt()} (${diffPct}%)."
+            else -> "This matches last month's spend of ₹${prevMonthSpent.toInt()} exactly."
+        }
+
+        val avgMsg = if (!avg3Months.isNaN() && avg3Months > 0) {
+            "Your 3-month historical average for $category is ₹${avg3Months.toInt()}."
+        } else ""
+
+        return "This month, you spent ₹${currentMonthSpent.toInt()} on $category. $limitMsg $trendMsg $avgMsg"
+    }
 }
