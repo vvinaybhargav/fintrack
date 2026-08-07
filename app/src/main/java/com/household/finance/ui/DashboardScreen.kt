@@ -84,6 +84,16 @@ fun DashboardScreen(
     val policies = remember(filteredEntries) {
         filteredEntries.filter { Calculations.policyStatus(it) != PolicyStatus.ACTIVE || it.category in setOf("LIC", "RD", "FD", "PPF", "SIP") }
     }
+    // Organized by the category list configured in Settings (Short/Medium/Long), in that list's
+    // own order - so the dashboard always matches how categories were set up, and "Other"
+    // (structurally last in every preset) never crowds out real categories.
+    val orderedCategorySpend = remember(summary.categorySpend, categoryLength) {
+        val amountByCategory = summary.categorySpend.associate { it.category to it.monthlyAmount }
+        categoriesFor(categoryLength).mapNotNull { cat ->
+            val amount = amountByCategory[cat] ?: return@mapNotNull null
+            if (amount <= 0.0) null else cat to amount
+        }
+    }
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
@@ -167,16 +177,6 @@ fun DashboardScreen(
             }
         }
 
-        // Organized by the category list configured in Settings (Short/Medium/Long), in that
-        // list's own order - so the dashboard always matches how categories were set up, and
-        // "Other" (structurally last in every preset) never crowds out real categories.
-        val orderedCategorySpend = remember(summary.categorySpend, categoryLength) {
-            val amountByCategory = summary.categorySpend.associate { it.category to it.monthlyAmount }
-            categoriesFor(categoryLength).mapNotNull { cat ->
-                val amount = amountByCategory[cat] ?: return@mapNotNull null
-                if (amount <= 0.0) null else cat to amount
-            }
-        }
         if (orderedCategorySpend.isNotEmpty()) {
             item {
                 GlassSurface(modifier = Modifier.fillMaxWidth()) {
