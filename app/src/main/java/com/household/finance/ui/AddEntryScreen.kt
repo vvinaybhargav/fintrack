@@ -10,10 +10,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.household.finance.data.Bucket
-import com.household.finance.data.DEFAULT_CATEGORIES
+import com.household.finance.data.CategoryListLength
 import com.household.finance.data.Entry
 import com.household.finance.data.EntryType
 import com.household.finance.data.Frequency
+import com.household.finance.data.categoriesFor
+import com.household.finance.logic.FinanceAi
 import com.household.finance.logic.SmartAddParser
 import com.household.finance.ui.theme.GlassSurface
 
@@ -23,19 +25,23 @@ fun AddEntryScreen(
     nameMe: String,
     nameWife: String,
     openAiKey: String,
+    categoryLength: CategoryListLength,
     editingEntry: Entry?,
     onSave: (Entry) -> Unit,
     onCancelEdit: () -> Unit
 ) {
+    val categories = remember(categoryLength) { categoriesFor(categoryLength) }
+
     var smartText by remember { mutableStateOf("") }
     var parsing by remember { mutableStateOf(false) }
     var parseError by remember { mutableStateOf<String?>(null) }
+    var suggestingCategory by remember { mutableStateOf(false) }
 
     var editId by remember { mutableStateOf("") }
     var person by remember { mutableStateOf(nameMe) }
     var type by remember { mutableStateOf(EntryType.EXPENSE) }
     var bucket by remember { mutableStateOf(Bucket.JOINT) }
-    var category by remember { mutableStateOf(DEFAULT_CATEGORIES.first()) }
+    var category by remember { mutableStateOf(categories.first()) }
     var amountText by remember { mutableStateOf("") }
     var frequency by remember { mutableStateOf(Frequency.MONTHLY) }
     var note by remember { mutableStateOf("") }
@@ -45,7 +51,7 @@ fun AddEntryScreen(
         person = nameMe
         type = EntryType.EXPENSE
         bucket = Bucket.JOINT
-        category = DEFAULT_CATEGORIES.first()
+        category = categories.first()
         amountText = ""
         frequency = Frequency.MONTHLY
         note = ""
@@ -57,7 +63,7 @@ fun AddEntryScreen(
         person = entry.person.ifBlank { nameMe }
         type = entry.type
         bucket = entry.bucket
-        category = entry.category.ifBlank { DEFAULT_CATEGORIES.first() }
+        category = entry.category.ifBlank { categories.first() }
         amountText = if (entry.amount > 0) entry.amount.toInt().toString() else ""
         frequency = entry.frequency
         note = entry.note
@@ -96,14 +102,14 @@ fun AddEntryScreen(
                     Button(onClick = {
                         if (smartText.isBlank()) return@Button
                         if (openAiKey.isBlank()) {
-                            applyDraft(SmartAddParser.parseRuleBased(smartText, nameMe, nameWife))
+                            applyDraft(SmartAddParser.parseRuleBased(smartText, nameMe, nameWife, categories))
                             parseError = null
                         } else {
                             parsing = true
                             parseError = null
                             Thread {
-                                val result = runCatching { SmartAddParser.parseWithOpenAi(smartText, openAiKey, nameMe, nameWife) }
-                                val entry = result.getOrElse { SmartAddParser.parseRuleBased(smartText, nameMe, nameWife) }
+                                val result = runCatching { SmartAddParser.parseWithOpenAi(smartText, openAiKey, nameMe, nameWife, categories) }
+                                val entry = result.getOrElse { SmartAddParser.parseRuleBased(smartText, nameMe, nameWife, categories) }
                                 if (result.isFailure) parseError = "AI parse failed, used offline rules instead."
                                 applyDraft(entry)
                                 parsing = false
@@ -131,7 +137,35 @@ fun AddEntryScreen(
                 LabeledDropdown("Person", listOf(nameMe, nameWife), person) { person = it }
                 LabeledDropdown("Type", EntryType.entries.map { it.name }, type.name) { type = EntryType.valueOf(it) }
                 LabeledDropdown("Bucket", Bucket.entries.map { it.name }, bucket.name) { bucket = Bucket.valueOf(it) }
-                LabeledDropdown("Category", DEFAULT_CATEGORIES, category) { category = it }
+
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { note = it },
+                    label = { Text("Note (helps AI pick a category)") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.weight(1f)) {
+                        LabeledDropdown("Category", categories, category) { category = it }
+                    }
+                    if (openAiKey.isNotBlank()) {
+                        Spacer(Modifier.width(8.dp))
+                        FilledTonalButton(
+                            onClick = {
+                                suggestingCategory = true
+                                Thread {
+                                    val result = runCatching { FinanceAi.suggestCategory(note, categories, openAiKey) }
+                                    result.getOrNull()?.let { category = it }
+                                    suggestingCategory = false
+                                }.start()
+                            },
+                            enabled = !suggestingCategory && note.isNotBlank()
+                        ) {
+                            Text(if (suggestingCategory) "…" else "AI")
+                        }
+                    }
+                }
 
                 OutlinedTextField(
                     value = amountText,
@@ -142,13 +176,6 @@ fun AddEntryScreen(
                 )
 
                 LabeledDropdown("Frequency", Frequency.entries.map { it.name }, frequency.name) { frequency = Frequency.valueOf(it) }
-
-                OutlinedTextField(
-                    value = note,
-                    onValueChange = { note = it },
-                    label = { Text("Note (optional)") },
-                    modifier = Modifier.fillMaxWidth()
-                )
 
                 Button(
                     onClick = {

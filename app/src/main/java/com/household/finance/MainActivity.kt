@@ -125,10 +125,14 @@ private fun AppRoot(viewModel: AppViewModel) {
                 )
             }
             composable("add") {
+                val categoryLength by viewModel.settings.categoryLengthFlow.collectAsStateWithLifecycle(
+                    initialValue = com.household.finance.data.CategoryListLength.MEDIUM
+                )
                 AddEntryScreen(
                     nameMe = nameMe,
                     nameWife = nameWife,
                     openAiKey = openAiKey,
+                    categoryLength = categoryLength,
                     editingEntry = editingEntry,
                     onSave = { viewModel.addEntry(it) },
                     onCancelEdit = { editingEntry = null }
@@ -158,6 +162,9 @@ private fun AppRoot(viewModel: AppViewModel) {
                 )
             }
             composable("settings") {
+                val categoryLength by viewModel.settings.categoryLengthFlow.collectAsStateWithLifecycle(
+                    initialValue = com.household.finance.data.CategoryListLength.MEDIUM
+                )
                 SettingsScreen(
                     nameMe = nameMe,
                     nameWife = nameWife,
@@ -165,10 +172,12 @@ private fun AppRoot(viewModel: AppViewModel) {
                     openAiKey = openAiKey,
                     firebaseConfig = firebaseConfig,
                     firestoreReady = firestoreReady,
+                    categoryLength = categoryLength,
                     onSaveNames = { me, wife -> scope.launch { viewModel.settings.saveNames(me, wife) } },
                     onSavePin = { newPin -> scope.launch { viewModel.settings.savePin(newPin) } },
                     onSaveOpenAiKey = { key -> scope.launch { viewModel.settings.saveOpenAiKey(key) } },
-                    onSaveFirebaseConfig = { config -> scope.launch { viewModel.settings.saveFirebaseConfig(config) } }
+                    onSaveFirebaseConfig = { config -> scope.launch { viewModel.settings.saveFirebaseConfig(config) } },
+                    onSaveCategoryLength = { length -> scope.launch { viewModel.settings.saveCategoryLength(length) } }
                 )
             }
         }

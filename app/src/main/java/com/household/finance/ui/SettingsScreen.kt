@@ -12,6 +12,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.household.finance.data.AppSettings
+import com.household.finance.data.CategoryListLength
 import com.household.finance.ui.theme.GlassSurface
 import com.household.finance.ui.theme.Positive
 
@@ -23,10 +24,12 @@ fun SettingsScreen(
     openAiKey: String,
     firebaseConfig: AppSettings.FirebaseConfig,
     firestoreReady: Boolean,
+    categoryLength: CategoryListLength,
     onSaveNames: (String, String) -> Unit,
     onSavePin: (String) -> Unit,
     onSaveOpenAiKey: (String) -> Unit,
-    onSaveFirebaseConfig: (AppSettings.FirebaseConfig) -> Unit
+    onSaveFirebaseConfig: (AppSettings.FirebaseConfig) -> Unit,
+    onSaveCategoryLength: (CategoryListLength) -> Unit
 ) {
     var meField by remember(nameMe) { mutableStateOf(nameMe) }
     var wifeField by remember(nameWife) { mutableStateOf(nameWife) }
@@ -49,6 +52,23 @@ fun SettingsScreen(
                 OutlinedTextField(value = meField, onValueChange = { meField = it }, label = { Text("Your name") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(value = wifeField, onValueChange = { wifeField = it }, label = { Text("Partner's name") }, modifier = Modifier.fillMaxWidth())
                 Button(onClick = { onSaveNames(meField, wifeField) }) { Text("Save Names") }
+            }
+        }
+
+        GlassSurface(modifier = Modifier.fillMaxWidth()) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("CATEGORY LIST LENGTH", style = MaterialTheme.typography.labelLarge)
+                Text("Controls how many categories show up in the Add screen's dropdown.", style = MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CategoryListLength.entries.forEach { length ->
+                        FilterChip(
+                            selected = categoryLength == length,
+                            onClick = { onSaveCategoryLength(length) },
+                            label = { Text(length.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
             }
         }
 

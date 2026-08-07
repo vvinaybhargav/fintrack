@@ -109,6 +109,18 @@ object FinanceAi {
         }
     }
 
+    /** Suggests the single best category for a note/amount, from the household's current category list. */
+    fun suggestCategory(note: String, availableCategories: List<String>, apiKey: String): String {
+        val system = """
+            Pick exactly ONE category from this list that best fits the note below:
+            ${availableCategories.joinToString(", ")}
+            Reply with ONLY the category text, exactly as written in the list, nothing else.
+        """.trimIndent()
+        val result = chatCompletion(apiKey, system, note.ifBlank { "Other" }, temperature = 0.0)
+        return availableCategories.firstOrNull { it.equals(result.trim(), ignoreCase = true) }
+            ?: availableCategories.first()
+    }
+
     /** Goal planning: turns a free-text goal into a structured monthly-contribution plan. */
     fun planGoal(description: String, monthlySurplus: Double, apiKey: String): Goal {
         val system = """

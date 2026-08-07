@@ -87,9 +87,32 @@ data class Goal(
     }
 }
 
-val DEFAULT_CATEGORIES = listOf(
+enum class CategoryListLength { SHORT, MEDIUM, LONG }
+
+val SHORT_CATEGORIES = listOf(
+    "EMI", "Groceries", "Eating Out", "Utilities", "LIC", "SIP", "Other"
+)
+
+val MEDIUM_CATEGORIES = listOf(
     "EMI", "Health Insurance", "Car Insurance", "LIC", "Music Classes",
     "RD", "FD", "PPF", "SIP", "Groceries", "Eating Out", "Utilities", "Other"
 )
 
-val INVESTMENT_CATEGORIES = setOf("LIC", "RD", "FD", "PPF", "SIP")
+val LONG_CATEGORIES = listOf(
+    "EMI", "Rent", "Health Insurance", "Life Insurance", "Car Insurance", "Home Insurance",
+    "LIC", "Music Classes", "Tuition/School Fees", "RD", "FD", "PPF", "SIP", "Mutual Funds",
+    "Stocks", "Gold", "Groceries", "Eating Out", "Utilities", "Mobile/Internet", "Fuel",
+    "Transport", "Travel", "Medical", "Shopping", "Subscriptions", "Gifts", "Donations",
+    "Home Maintenance", "Salary", "Bonus", "Other"
+)
+
+fun categoriesFor(length: CategoryListLength): List<String> = when (length) {
+    CategoryListLength.SHORT -> SHORT_CATEGORIES
+    CategoryListLength.MEDIUM -> MEDIUM_CATEGORIES
+    CategoryListLength.LONG -> LONG_CATEGORIES
+}
+
+/** Kept for any lingering references; prefer [categoriesFor]. */
+val DEFAULT_CATEGORIES = MEDIUM_CATEGORIES
+
+val INVESTMENT_CATEGORIES = setOf("LIC", "RD", "FD", "PPF", "SIP", "Mutual Funds", "Stocks", "Gold")

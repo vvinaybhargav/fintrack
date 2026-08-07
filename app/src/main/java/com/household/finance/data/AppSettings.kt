@@ -26,12 +26,20 @@ class AppSettings(private val context: Context) {
         val FB_STORAGE_BUCKET = stringPreferencesKey("fb_storage_bucket")
         val FB_MESSAGING_SENDER_ID = stringPreferencesKey("fb_messaging_sender_id")
         val OPENAI_KEY = stringPreferencesKey("openai_key")
+        val CATEGORY_LENGTH = stringPreferencesKey("category_length")
     }
 
     val pinFlow: Flow<String> = context.dataStore.data.map { it[Keys.PIN] ?: "1234" }
     val nameMeFlow: Flow<String> = context.dataStore.data.map { it[Keys.NAME_ME] ?: "Me" }
     val nameWifeFlow: Flow<String> = context.dataStore.data.map { it[Keys.NAME_WIFE] ?: "Wife" }
     val openAiKeyFlow: Flow<String> = context.dataStore.data.map { it[Keys.OPENAI_KEY] ?: "" }
+    val categoryLengthFlow: Flow<CategoryListLength> = context.dataStore.data.map {
+        runCatching { CategoryListLength.valueOf(it[Keys.CATEGORY_LENGTH] ?: "MEDIUM") }.getOrDefault(CategoryListLength.MEDIUM)
+    }
+
+    suspend fun saveCategoryLength(length: CategoryListLength) {
+        context.dataStore.edit { it[Keys.CATEGORY_LENGTH] = length.name }
+    }
 
     data class FirebaseConfig(
         val apiKey: String = "",

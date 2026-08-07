@@ -25,7 +25,7 @@ object SmartAddParser {
     private val annualKeywords = setOf("annual", "yearly", "/yr", "per year")
 
     /** Offline rule-based parse. Always available, no network / API key required. */
-    fun parseRuleBased(text: String, nameMe: String, nameWife: String): Entry {
+    fun parseRuleBased(text: String, nameMe: String, nameWife: String, categories: List<String> = DEFAULT_CATEGORIES): Entry {
         val lower = text.lowercase(Locale.ROOT)
 
         val amount = extractAmount(lower)
@@ -36,7 +36,7 @@ object SmartAddParser {
             else -> nameMe
         }
 
-        val category = DEFAULT_CATEGORIES.firstOrNull { lower.contains(it.lowercase(Locale.ROOT)) }
+        val category = categories.firstOrNull { lower.contains(it.lowercase(Locale.ROOT)) }
             ?: when {
                 lower.contains("emi") -> "EMI"
                 lower.contains("insurance") -> "Health Insurance"
@@ -93,14 +93,14 @@ object SmartAddParser {
      * Optional AI-assisted parse via OpenAI gpt-4o-mini. Throws on any failure;
      * caller should catch and fall back to [parseRuleBased].
      */
-    fun parseWithOpenAi(text: String, apiKey: String, nameMe: String, nameWife: String): Entry {
+    fun parseWithOpenAi(text: String, apiKey: String, nameMe: String, nameWife: String, categories: List<String> = DEFAULT_CATEGORIES): Entry {
         val systemPrompt = """
             You convert a short household-finance note into strict JSON with keys:
             person (one of "$nameMe" or "$nameWife"), type (INCOME, EXPENSE, or SAVINGS),
-            bucket (JOINT, PERSONAL_ME, or PERSONAL_WIFE), category (short string, e.g. EMI, Health Insurance,
-            Car Insurance, LIC, Music Classes, RD, FD, PPF, SIP, Groceries, Eating Out, Utilities, Other),
-            amount (number, INR), frequency (MONTHLY or ANNUAL), note (short string).
-            RD, FD, PPF, SIP, LIC are SAVINGS not EXPENSE. Reply with ONLY the JSON object, no prose.
+            bucket (JOINT, PERSONAL_ME, or PERSONAL_WIFE), category (pick the single best match from this
+            exact list: ${categories.joinToString(", ")}), amount (number, INR), frequency (MONTHLY or ANNUAL),
+            note (short string). RD, FD, PPF, SIP, LIC, Mutual Funds, Stocks, Gold are SAVINGS not EXPENSE.
+            Reply with ONLY the JSON object, no prose.
         """.trimIndent()
 
         val body = JSONObject().apply {
