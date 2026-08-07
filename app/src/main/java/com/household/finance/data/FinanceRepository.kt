@@ -518,6 +518,10 @@ class FirestoreFinanceRepository(private val context: Context) : FinanceReposito
         col.document(accountDocId(oldName)).delete().awaitTask()
     }
 
+    override suspend fun deleteAccount(name: String) {
+        accountsCollection()?.document(accountDocId(name))?.delete()?.awaitTask()
+    }
+
     override fun observeActiveLoans(): Flow<List<ActiveLoan>> = callbackFlow {
         val col = activeLoansCollection()
         if (col == null) {
