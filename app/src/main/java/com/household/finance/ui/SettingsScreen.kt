@@ -34,13 +34,17 @@ fun SettingsScreen(
     var meField by remember(nameMe) { mutableStateOf(nameMe) }
     var wifeField by remember(nameWife) { mutableStateOf(nameWife) }
     var pinField by remember(pin) { mutableStateOf(pin) }
-    var keyField by remember(openAiKey) { mutableStateOf(openAiKey) }
 
-    var apiKey by remember(firebaseConfig) { mutableStateOf(firebaseConfig.apiKey) }
-    var appId by remember(firebaseConfig) { mutableStateOf(firebaseConfig.appId) }
-    var projectId by remember(firebaseConfig) { mutableStateOf(firebaseConfig.projectId) }
-    var storageBucket by remember(firebaseConfig) { mutableStateOf(firebaseConfig.storageBucket) }
-    var senderId by remember(firebaseConfig) { mutableStateOf(firebaseConfig.messagingSenderId) }
+    // One comma-separated field: apiKey,appId,projectId,storageBucket,messagingSenderId,openAiKey
+    var combinedConfig by remember(firebaseConfig, openAiKey) {
+        mutableStateOf(
+            listOf(
+                firebaseConfig.apiKey, firebaseConfig.appId, firebaseConfig.projectId,
+                firebaseConfig.storageBucket, firebaseConfig.messagingSenderId, openAiKey
+            ).joinToString(",")
+        )
+    }
+    var combinedError by remember { mutableStateOf<String?>(null) }
 
     Column(
         modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()),
@@ -89,48 +93,45 @@ fun SettingsScreen(
 
         GlassSurface(modifier = Modifier.fillMaxWidth()) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("FIREBASE (FIRESTORE) SYNC", style = MaterialTheme.typography.labelLarge)
+                Text("KEYS & CONFIG", style = MaterialTheme.typography.labelLarge)
                 Text(
                     if (firestoreReady) "Status: connected — entries sync in real time." else "Status: not configured — entries are not being saved.",
                     color = if (firestoreReady) Positive else MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall
                 )
-                Text("Enter the same values on both phones (from Firebase Console > Project settings > Your apps > Web app config).", style = MaterialTheme.typography.bodySmall)
-                OutlinedTextField(value = apiKey, onValueChange = { apiKey = it }, label = { Text("apiKey") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                OutlinedTextField(value = appId, onValueChange = { appId = it }, label = { Text("appId") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                OutlinedTextField(value = projectId, onValueChange = { projectId = it }, label = { Text("projectId") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                OutlinedTextField(value = storageBucket, onValueChange = { storageBucket = it }, label = { Text("storageBucket (optional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                OutlinedTextField(value = senderId, onValueChange = { senderId = it }, label = { Text("messagingSenderId (optional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                Button(onClick = {
-                    onSaveFirebaseConfig(
-                        AppSettings.FirebaseConfig(
-                            apiKey = apiKey.trim(),
-                            appId = appId.trim(),
-                            projectId = projectId.trim(),
-                            storageBucket = storageBucket.trim(),
-                            messagingSenderId = senderId.trim()
-                        )
-                    )
-                }) { Text("Save Firebase Config") }
-            }
-        }
-
-        GlassSurface(modifier = Modifier.fillMaxWidth()) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("OPENAI (OPTIONAL)", style = MaterialTheme.typography.labelLarge)
                 Text(
-                    "Powers Smart Add parsing, Chat, Budget Suggestions, Anomaly Detection, and Goal Planning — all via gpt-4o-mini, called only when you tap a button, never automatically. Stored only on this device. Set a low spending cap on this key in your OpenAI dashboard.",
+                    "Paste one comma-separated line, in this exact order: apiKey,appId,projectId,storageBucket,messagingSenderId,openAiKey. " +
+                        "storageBucket, messagingSenderId, and openAiKey may be left blank (still keep the commas) — enter the same Firebase values on both phones; the OpenAI key is optional and stays local to this device.",
                     style = MaterialTheme.typography.bodySmall
                 )
                 OutlinedTextField(
-                    value = keyField,
-                    onValueChange = { keyField = it },
-                    label = { Text("OpenAI API key") },
-                    visualTransformation = PasswordVisualTransformation(),
+                    value = combinedConfig,
+                    onValueChange = { combinedConfig = it; combinedError = null },
+                    label = { Text("apiKey,appId,projectId,storageBucket,messagingSenderId,openAiKey") },
                     modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
+                    minLines = 2
                 )
-                Button(onClick = { onSaveOpenAiKey(keyField.trim()) }) { Text("Save OpenAI Key") }
+                combinedError?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+                Button(onClick = {
+                    val parts = combinedConfig.split(",").map { it.trim() }
+                    if (parts.size != 6) {
+                        combinedError = "Expected 6 comma-separated values, got ${parts.size}."
+                        return@Button
+                    }
+                    onSaveFirebaseConfig(
+                        AppSettings.FirebaseConfig(
+                            apiKey = parts[0],
+                            appId = parts[1],
+                            projectId = parts[2],
+                            storageBucket = parts[3],
+                            messagingSenderId = parts[4]
+                        )
+                    )
+                    onSaveOpenAiKey(parts[5])
+                    combinedError = null
+                }) { Text("Save All") }
             }
         }
 

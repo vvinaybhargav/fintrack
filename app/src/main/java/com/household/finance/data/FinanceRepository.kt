@@ -8,13 +8,17 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestoreSettings
 import com.google.firebase.firestore.PersistentCacheSettings
 import com.google.firebase.firestore.SetOptions
+import com.google.firebase.firestore.Source
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.suspendCancellableCoroutine
 
 /** Data-layer contract. Swap the implementation without touching UI code. */
 interface FinanceRepository {
     fun observeEntries(): Flow<List<Entry>>
+    /** Forces a one-time server round-trip so the live listener's local cache is guaranteed current. */
+    suspend fun refreshEntries()
     suspend fun addEntry(entry: Entry)
     suspend fun deleteEntry(id: String)
     fun observeEmergencyFund(): Flow<EmergencyFund>
@@ -98,6 +102,14 @@ class FirestoreFinanceRepository(private val context: Context) : FinanceReposito
             trySend(list.sortedByDescending { it.createdAt })
         }
         awaitClose { registration.remove() }
+    }
+
+    override suspend fun refreshEntries() {
+        val col = entriesCollection() ?: return
+        suspendCancellableCoroutine<Unit> { cont ->
+            col.get(Source.SERVER)
+                .addOnCompleteListener { if (cont.isActive) cont.resumeWith(Result.success(Unit)) }
+        }
     }
 
     override suspend fun addEntry(entry: Entry) {

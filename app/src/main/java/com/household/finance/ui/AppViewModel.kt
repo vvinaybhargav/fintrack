@@ -45,6 +45,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val _accounts = MutableStateFlow<List<Account>>(emptyList())
     val accounts: StateFlow<List<Account>> = _accounts.asStateFlow()
 
+    private val _refreshing = MutableStateFlow(false)
+    val refreshing: StateFlow<Boolean> = _refreshing.asStateFlow()
+
     init {
         viewModelScope.launch {
             settings.nameMeFlow.collect { _nameMe.value = it }
@@ -98,6 +101,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteEntry(id: String) {
         viewModelScope.launch { repository.deleteEntry(id) }
+    }
+
+    fun refreshEntries() {
+        viewModelScope.launch {
+            _refreshing.value = true
+            repository.refreshEntries()
+            _refreshing.value = false
+        }
     }
 
     fun setEmergencyFund(amount: Double) {
