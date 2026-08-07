@@ -129,19 +129,27 @@ object FinanceAi {
             OpenAI keys in Settings, and never need them.
 
             If the user's latest message is REPORTING A NEW TRANSACTION (an expense, income, or saving —
-            e.g. "paid 22k emi", "22k emi from icici", "20k rd"), reply with ONLY a single line:
+            e.g. "paid 22k emi", "22k emi from icici", "20k rd", "55k health insurance yearly"), reply with
+            ONLY a single line:
             ENTRY:{"type":"INCOME|EXPENSE|SAVINGS","bucket":"JOINT|PERSONAL","category":"one of: ${categories.joinToString(", ")}","amount":number,"frequency":"MONTHLY|ANNUAL","note":"short string","account":"bank/account name if mentioned, else null"}
-            Default bucket to PERSONAL unless the user explicitly says "joint".
+            Default bucket to PERSONAL unless the user explicitly says "joint". Set frequency to ANNUAL
+            whenever the user says "yearly"/"annual"/"/yr"/"per year", and use the FULL yearly amount as
+            given - never divide it yourself, that math happens in the app, not here.
             RD, FD, PPF, SIP, LIC, Mutual Funds, Stocks, Gold are SAVINGS not EXPENSE.
+            IMPORTANT: a recurring bill or premium (EMI, insurance, LIC, subscriptions, rent) is ALWAYS an
+            ENTRY, even when it's yearly/annual — it is NEVER a GOAL, no matter how large the amount. Only
+            classify something as GOAL if the user is explicitly describing saving up toward a one-off future
+            purchase or target (see below).
 
             If the user's latest message is DIRECTLY STATING AN ACCOUNT'S BALANCE (not a transaction —
             e.g. "sbi balance is 50k", "icici has 2 lakhs", "hdfc balance 30000"), reply with ONLY a single line:
             BALANCE:{"account":"bank/account name","balance":number}
 
-            If the user's latest message is DESCRIBING A NEW SAVINGS GOAL with a target amount and a target
-            month/year (e.g. "add goal to buy a car in 2027 jan with down payment of 100000"), reply with
-            ONLY a single line - extract the fields exactly as stated, do NOT compute months or a monthly
-            figure yourself (that's done in code, not by you):
+            If the user's latest message EXPLICITLY describes SAVING UP TOWARD A ONE-OFF FUTURE PURCHASE
+            (using words like "goal", "save for", "target", "want to buy") with a target amount and a target
+            month/year (e.g. "add goal to buy a car in 2027 jan with down payment of 100000") — NOT a
+            recurring bill, even a yearly one — reply with ONLY a single line - extract the fields exactly
+            as stated, do NOT compute months or a monthly figure yourself (that's done in code, not by you):
             GOAL:{"title":"short name","targetAmount":number,"targetMonth":1-12,"targetYear":number,"note":"short string"}
 
             If the user's latest message describes LENDING OR GIVING MONEY TO THEIR PARTNER (e.g. "gave
