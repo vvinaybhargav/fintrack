@@ -114,9 +114,14 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
             modifier = Modifier.padding(padding).fillMaxSize()
         ) {
             composable("dashboard") {
+                val categoryLength by viewModel.settings.categoryLengthFlow.collectAsStateWithLifecycle(
+                    initialValue = com.household.finance.data.CategoryListLength.MEDIUM
+                )
                 DashboardScreen(
                     entries = entries,
                     accounts = accounts,
+                    goals = goals,
+                    categoryLength = categoryLength,
                     emergencyFundAmount = emergencyFund.currentAmount,
                     nameMe = nameMe,
                     onSetEmergencyFund = { viewModel.setEmergencyFund(it) },

@@ -20,8 +20,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.household.finance.data.Account
 import com.household.finance.data.Bucket
+import com.household.finance.data.CategoryListLength
 import com.household.finance.data.Entry
+import com.household.finance.data.Goal
 import com.household.finance.data.PolicyStatus
+import com.household.finance.data.categoriesFor
 import com.household.finance.logic.Calculations
 import com.household.finance.logic.InsightsCoach
 import com.household.finance.ui.theme.Cyan
@@ -53,6 +56,8 @@ private enum class DashboardView { PERSONAL, JOINT }
 fun DashboardScreen(
     entries: List<Entry>,
     accounts: List<Account>,
+    goals: List<Goal>,
+    categoryLength: CategoryListLength,
     emergencyFundAmount: Double,
     nameMe: String,
     onSetEmergencyFund: (Double) -> Unit,
@@ -117,9 +122,35 @@ fun DashboardScreen(
 
         if (accounts.isNotEmpty()) {
             item {
+                Text("Tap a balance to edit it", style = MaterialTheme.typography.bodySmall)
+            }
+            item {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(accounts, key = { it.name }) { account ->
                         BalanceChip(account = account, onSave = { onSetAccountBalance(account.name, it) })
+                    }
+                }
+            }
+        }
+
+        if (goals.isNotEmpty()) {
+            item {
+                GlassSurface(modifier = Modifier.fillMaxWidth()) {
+                    Column {
+                        Text("GOALS", style = MaterialTheme.typography.labelLarge)
+                        Spacer(Modifier.height(10.dp))
+                        goals.forEach { goal ->
+                            val progress = if (goal.targetAmount > 0) (goal.savedSoFar / goal.targetAmount).coerceIn(0.0, 1.0) else 0.0
+                            Column(Modifier.padding(bottom = 10.dp)) {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(goal.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                    Text(formatInr(goal.savedSoFar) + " / " + formatInr(goal.targetAmount), style = MaterialTheme.typography.bodySmall)
+                                }
+                                Spacer(Modifier.height(6.dp))
+                                LinearProgressIndicator(progress = { progress.toFloat() }, modifier = Modifier.fillMaxWidth().height(5.dp))
+                            }
+                        }
+                        Text("Manage goals from the AI tab.", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
@@ -135,30 +166,43 @@ fun DashboardScreen(
             }
         }
 
-        if (summary.categorySpend.isNotEmpty()) {
+        // Organized by the category list configured in Settings (Short/Medium/Long), in that
+        // list's own order - so the dashboard always matches how categories were set up, and
+        // "Other" (structurally last in every preset) never crowds out real categories.
+        val orderedCategorySpend = remember(summary.categorySpend, categoryLength) {
+            val amountByCategory = summary.categorySpend.associate { it.category to it.monthlyAmount }
+            categoriesFor(categoryLength).mapNotNull { cat ->
+                val amount = amountByCategory[cat] ?: return@mapNotNull null
+                if (amount <= 0.0) null else cat to amount
+            }
+        }
+        if (orderedCategorySpend.isNotEmpty()) {
             item {
                 GlassSurface(modifier = Modifier.fillMaxWidth()) {
                     Column {
-                        Text("TOP SPEND", style = MaterialTheme.typography.labelLarge)
+                        Text("SPEND BY CATEGORY", style = MaterialTheme.typography.labelLarge)
                         Spacer(Modifier.height(10.dp))
-                        val top = summary.categorySpend.take(4)
-                        val maxAmount = top.maxOf { it.monthlyAmount }.coerceAtLeast(1.0)
-                        top.forEach { c ->
+                        val shown = orderedCategorySpend.take(6)
+                        val maxAmount = shown.maxOf { it.second }.coerceAtLeast(1.0)
+                        shown.forEach { (category, amount) ->
                             Column(Modifier.padding(bottom = 8.dp)) {
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text(c.category, style = MaterialTheme.typography.bodySmall)
-                                    Text(formatInr(c.monthlyAmount), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                                    Text(category, style = MaterialTheme.typography.bodySmall)
+                                    Text(formatInr(amount), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
                                 }
                                 Spacer(Modifier.height(4.dp))
                                 Box(Modifier.fillMaxWidth().height(5.dp).background(Color(0x1AFFFFFF), androidx.compose.foundation.shape.RoundedCornerShape(3.dp))) {
                                     Box(
                                         Modifier
-                                            .fillMaxWidth(fraction = (c.monthlyAmount / maxAmount).toFloat().coerceIn(0f, 1f))
+                                            .fillMaxWidth(fraction = (amount / maxAmount).toFloat().coerceIn(0f, 1f))
                                             .height(5.dp)
                                             .background(Brush.horizontalGradient(listOf(Violet, Cyan)), androidx.compose.foundation.shape.RoundedCornerShape(3.dp))
                                     )
                                 }
                             }
+                        }
+                        if (orderedCategorySpend.size > shown.size) {
+                            Text("+${orderedCategorySpend.size - shown.size} more in details below", style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
