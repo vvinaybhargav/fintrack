@@ -23,6 +23,13 @@ object SmartAddParser {
 
     private val savingsKeywords = setOf("rd", "fd", "ppf", "sip", "investment", "invest")
     private val annualKeywords = setOf("annual", "yearly", "/yr", "per year")
+    private val knownBanks = setOf(
+        "icici", "sbi", "hdfc", "axis", "kotak", "idfc", "yes bank", "federal", "rbl",
+        "canara", "pnb", "union bank", "boi", "indian bank", "paytm", "phonepe", "cash"
+    )
+
+    private fun extractAccount(lower: String): String? =
+        knownBanks.firstOrNull { lower.contains(it) }?.uppercase()
 
     /** Offline rule-based parse. Always available, no network / API key required. */
     fun parseRuleBased(text: String, nameMe: String, nameWife: String, categories: List<String> = DEFAULT_CATEGORIES): Entry {
@@ -73,7 +80,8 @@ object SmartAddParser {
             category = category,
             amount = amount,
             frequency = frequency,
-            note = text
+            note = text,
+            accountName = extractAccount(lower)
         )
     }
 
@@ -99,7 +107,8 @@ object SmartAddParser {
             person (one of "$nameMe" or "$nameWife"), type (INCOME, EXPENSE, or SAVINGS),
             bucket (JOINT, PERSONAL_ME, or PERSONAL_WIFE), category (pick the single best match from this
             exact list: ${categories.joinToString(", ")}), amount (number, INR), frequency (MONTHLY or ANNUAL),
-            note (short string). RD, FD, PPF, SIP, LIC, Mutual Funds, Stocks, Gold are SAVINGS not EXPENSE.
+            note (short string), account (bank/account name if mentioned in the text, e.g. "ICICI", "SBI", else null).
+            RD, FD, PPF, SIP, LIC, Mutual Funds, Stocks, Gold are SAVINGS not EXPENSE.
             Reply with ONLY the JSON object, no prose.
         """.trimIndent()
 
@@ -138,7 +147,8 @@ object SmartAddParser {
                 category = json.optString("category", "Other"),
                 amount = json.optDouble("amount", 0.0),
                 frequency = runCatching { Frequency.valueOf(json.getString("frequency")) }.getOrDefault(Frequency.MONTHLY),
-                note = json.optString("note", text)
+                note = json.optString("note", text),
+                accountName = json.optString("account", "").ifBlank { null }.takeIf { it != "null" }
             )
         }
     }

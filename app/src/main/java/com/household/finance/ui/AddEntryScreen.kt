@@ -45,6 +45,7 @@ fun AddEntryScreen(
     var amountText by remember { mutableStateOf("") }
     var frequency by remember { mutableStateOf(Frequency.MONTHLY) }
     var note by remember { mutableStateOf("") }
+    var accountText by remember { mutableStateOf("") }
 
     fun resetForm() {
         editId = ""
@@ -56,6 +57,7 @@ fun AddEntryScreen(
         frequency = Frequency.MONTHLY
         note = ""
         smartText = ""
+        accountText = ""
     }
 
     fun applyDraft(entry: Entry) {
@@ -67,6 +69,7 @@ fun AddEntryScreen(
         amountText = if (entry.amount > 0) entry.amount.toInt().toString() else ""
         frequency = entry.frequency
         note = entry.note
+        accountText = entry.accountName ?: ""
     }
 
     LaunchedEffect(editingEntry) {
@@ -177,6 +180,20 @@ fun AddEntryScreen(
 
                 LabeledDropdown("Frequency", Frequency.entries.map { it.name }, frequency.name) { frequency = Frequency.valueOf(it) }
 
+                OutlinedTextField(
+                    value = accountText,
+                    onValueChange = { accountText = it },
+                    label = { Text("Account (optional, e.g. ICICI, SBI)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (accountText.isNotBlank() && editId.isBlank()) {
+                    Text(
+                        "New entries update this account's balance automatically (${if (type == EntryType.INCOME) "+" else "-"}₹${amountText.ifBlank { "0" }}).",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+
                 Button(
                     onClick = {
                         val amount = amountText.toDoubleOrNull() ?: 0.0
@@ -190,7 +207,8 @@ fun AddEntryScreen(
                                 category = category,
                                 amount = amount,
                                 frequency = frequency,
-                                note = note
+                                note = note,
+                                accountName = accountText.trim().ifBlank { null }
                             )
                         )
                         resetForm()

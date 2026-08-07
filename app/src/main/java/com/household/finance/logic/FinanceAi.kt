@@ -15,8 +15,10 @@ data class ChatMessage(val role: String, val content: String) // role: "user" or
 
 data class AnomalyFlag(val entryId: String, val label: String, val reason: String)
 
-/** Either a plain answer, or a parsed transaction ready for one-tap confirm (chat-based entry). */
-data class ChatResult(val replyText: String?, val draftEntry: Entry?)
+/** Either a plain answer, a parsed transaction ready for one-tap confirm, or a direct balance statement. */
+data class ChatResult(val replyText: String?, val draftEntry: Entry?, val balanceUpdate: BalanceUpdate? = null)
+
+data class BalanceUpdate(val account: String, val balance: Double)
 
 /**
  * All OpenAI-backed features, gpt-4o-mini only, called strictly on user action
@@ -66,15 +68,34 @@ object FinanceAi {
      * ("paid 22k emi", "add 4500 wife music class"), returns a draft [Entry] to confirm instead of text.
      * Otherwise answers the question grounded only in the household's real entries.
      */
-    fun chat(question: String, history: List<ChatMessage>, entries: List<Entry>, categories: List<String>, nameMe: String, nameWife: String, apiKey: String): ChatResult {
+    fun chat(
+        question: String,
+        history: List<ChatMessage>,
+        entries: List<Entry>,
+        accounts: List<com.household.finance.data.Account>,
+        categories: List<String>,
+        nameMe: String,
+        nameWife: String,
+        apiKey: String
+    ): ChatResult {
+        val accountsDigest = if (accounts.isEmpty()) "No accounts tracked yet." else
+            accounts.joinToString(", ") { "${it.name}: ₹${it.balance.toInt()}" }
+
         val system = """
             You are a household budgeting assistant for an Indian married couple using an app called
             Household Finance. Amounts are in INR.
 
             If the user's latest message is REPORTING A NEW TRANSACTION (an expense, income, or saving —
-            e.g. "paid 22k emi", "add 4500 wife music class", "20k rd"), reply with ONLY a single line:
-            ENTRY:{"person":"$nameMe or $nameWife","type":"INCOME|EXPENSE|SAVINGS","bucket":"JOINT|PERSONAL_ME|PERSONAL_WIFE","category":"one of: ${categories.joinToString(", ")}","amount":number,"frequency":"MONTHLY|ANNUAL","note":"short string"}
-            RD, FD, PPF, SIP, LIC, Mutual Funds, Stocks, Gold are SAVINGS not EXPENSE. No prose, no markdown, just that one line.
+            e.g. "paid 22k emi", "add 4500 wife music class", "20k rd", "22k emi from icici"), reply with
+            ONLY a single line:
+            ENTRY:{"person":"$nameMe or $nameWife","type":"INCOME|EXPENSE|SAVINGS","bucket":"JOINT|PERSONAL_ME|PERSONAL_WIFE","category":"one of: ${categories.joinToString(", ")}","amount":number,"frequency":"MONTHLY|ANNUAL","note":"short string","account":"bank/account name if mentioned, else null"}
+            RD, FD, PPF, SIP, LIC, Mutual Funds, Stocks, Gold are SAVINGS not EXPENSE.
+
+            If the user's latest message is DIRECTLY STATING AN ACCOUNT'S BALANCE (not a transaction —
+            e.g. "sbi balance is 50k", "icici has 2 lakhs", "hdfc balance 30000"), reply with ONLY a single line:
+            BALANCE:{"account":"bank/account name","balance":number}
+
+            For either case: no prose, no markdown fences, just that one line.
 
             Otherwise, answer the user's question using ONLY the data below — never invent numbers.
             Be concise (2-5 sentences), warm, neutral, never judgmental about spending choices.
@@ -82,6 +103,9 @@ object FinanceAi {
 
             Current entries:
             ${entriesDigest(entries)}
+
+            Current account balances:
+            $accountsDigest
         """.trimIndent()
 
         val historyText = history.takeLast(6).joinToString("\n") { "${it.role}: ${it.content}" }
@@ -103,11 +127,25 @@ object FinanceAi {
                     amount = json.optDouble("amount", 0.0),
                     frequency = runCatching { com.household.finance.data.Frequency.valueOf(json.getString("frequency")) }
                         .getOrDefault(com.household.finance.data.Frequency.MONTHLY),
-                    note = json.optString("note", question)
+                    note = json.optString("note", question),
+                    accountName = json.optString("account", "").ifBlank { null }.takeIf { it != "null" }
                 )
             }.getOrNull()
             if (parsed != null && parsed.amount > 0) return ChatResult(null, parsed)
         }
+
+        if (raw.startsWith("BALANCE:")) {
+            val jsonText = raw.removePrefix("BALANCE:").trim()
+                .removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
+            val parsed = runCatching {
+                val json = JSONObject(jsonText)
+                val account = json.optString("account", "").trim()
+                val balance = json.optDouble("balance", Double.NaN)
+                if (account.isBlank() || balance.isNaN()) null else BalanceUpdate(account, balance)
+            }.getOrNull()
+            if (parsed != null) return ChatResult(null, null, parsed)
+        }
+
         return ChatResult(raw, null)
     }
 

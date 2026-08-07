@@ -15,9 +15,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import com.household.finance.data.Account
 import com.household.finance.data.Entry
 import com.household.finance.data.Goal
 import com.household.finance.logic.AnomalyFlag
+import com.household.finance.logic.BalanceUpdate
 import com.household.finance.logic.ChatMessage
 import com.household.finance.logic.FinanceAi
 import com.household.finance.ui.theme.GlassSurface
@@ -30,6 +32,7 @@ private enum class AiTab { CHAT, BUDGET, ANOMALIES, GOALS }
 fun AiHubScreen(
     entries: List<Entry>,
     goals: List<Goal>,
+    accounts: List<Account>,
     monthlySurplus: Double,
     openAiKey: String,
     categories: List<String>,
@@ -37,7 +40,8 @@ fun AiHubScreen(
     nameWife: String,
     onAddGoal: (Goal) -> Unit,
     onDeleteGoal: (String) -> Unit,
-    onAddEntry: (Entry) -> Unit
+    onAddEntry: (Entry) -> Unit,
+    onSetAccountBalance: (String, Double) -> Unit
 ) {
     var tab by remember { mutableStateOf(AiTab.CHAT) }
 
@@ -57,7 +61,7 @@ fun AiHubScreen(
         Spacer(Modifier.height(14.dp))
 
         when (tab) {
-            AiTab.CHAT -> ChatPane(entries, categories, nameMe, nameWife, openAiKey, onAddEntry)
+            AiTab.CHAT -> ChatPane(entries, accounts, categories, nameMe, nameWife, openAiKey, onAddEntry, onSetAccountBalance)
             AiTab.BUDGET -> BudgetPane(entries, openAiKey)
             AiTab.ANOMALIES -> AnomaliesPane(entries, openAiKey)
             AiTab.GOALS -> GoalsPane(goals, monthlySurplus, openAiKey, onAddGoal, onDeleteGoal)
@@ -84,16 +88,20 @@ private sealed class ChatBubble {
     data class Text(val role: String, val content: String) : ChatBubble()
     data class PendingEntry(val entry: Entry) : ChatBubble()
     data class AddedEntry(val entry: Entry) : ChatBubble()
+    data class PendingBalance(val update: BalanceUpdate) : ChatBubble()
+    data class AppliedBalance(val update: BalanceUpdate) : ChatBubble()
 }
 
 @Composable
 private fun ChatPane(
     entries: List<Entry>,
+    accounts: List<Account>,
     categories: List<String>,
     nameMe: String,
     nameWife: String,
     apiKey: String,
-    onAddEntry: (Entry) -> Unit
+    onAddEntry: (Entry) -> Unit,
+    onSetAccountBalance: (String, Double) -> Unit
 ) {
     var input by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
@@ -110,14 +118,21 @@ private fun ChatPane(
         loading = true
         error = null
         Thread {
-            val result = runCatching { FinanceAi.chat(question, history.toList(), entries, categories, nameMe, nameWife, apiKey) }
+            val result = runCatching { FinanceAi.chat(question, history.toList(), entries, accounts, categories, nameMe, nameWife, apiKey) }
             result.onSuccess { r ->
-                if (r.draftEntry != null) {
-                    bubbles.add(ChatBubble.PendingEntry(r.draftEntry))
-                    history.add(ChatMessage("assistant", "Parsed a transaction, awaiting confirmation."))
-                } else if (r.replyText != null) {
-                    bubbles.add(ChatBubble.Text("assistant", r.replyText))
-                    history.add(ChatMessage("assistant", r.replyText))
+                when {
+                    r.draftEntry != null -> {
+                        bubbles.add(ChatBubble.PendingEntry(r.draftEntry))
+                        history.add(ChatMessage("assistant", "Parsed a transaction, awaiting confirmation."))
+                    }
+                    r.balanceUpdate != null -> {
+                        bubbles.add(ChatBubble.PendingBalance(r.balanceUpdate))
+                        history.add(ChatMessage("assistant", "Parsed a balance update, awaiting confirmation."))
+                    }
+                    r.replyText != null -> {
+                        bubbles.add(ChatBubble.Text("assistant", r.replyText))
+                        history.add(ChatMessage("assistant", r.replyText))
+                    }
                 }
             }
             result.onFailure { error = "Couldn't reach OpenAI — check your key and connection." }
@@ -129,7 +144,7 @@ private fun ChatPane(
         if (bubbles.isEmpty()) {
             GlassSurface(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    "This is chat-based entry: type \"22k emi\" or \"paid 4500 wife music class\" to log it directly, or ask a question like \"how much did we spend on eating out this month\".",
+                    "Chat-based entry: type \"22k emi\" to log it, \"22k emi from icici\" to also update that account's balance, or \"sbi balance is 50k\" to set a balance directly. You can also just ask a question.",
                     style = MaterialTheme.typography.bodySmall
                 )
             }
@@ -151,6 +166,9 @@ private fun ChatPane(
                                 Spacer(Modifier.height(6.dp))
                                 Text("${bubble.entry.category} — ${bubble.entry.person} · ${bubble.entry.type} · ${bubble.entry.bucket}", style = MaterialTheme.typography.bodySmall)
                                 Text(formatInr(bubble.entry.amount) + if (bubble.entry.frequency.name == "ANNUAL") "/yr" else "/mo", fontWeight = FontWeight.SemiBold)
+                                bubble.entry.accountName?.let {
+                                    Text("Will update $it balance by ${if (bubble.entry.type.name == "INCOME") "+" else "-"}${formatInr(bubble.entry.amount)}", style = MaterialTheme.typography.bodySmall)
+                                }
                                 Spacer(Modifier.height(10.dp))
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Button(onClick = {
@@ -171,6 +189,35 @@ private fun ChatPane(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text("✅", modifier = Modifier.padding(end = 8.dp))
                                 Text("Added ${bubble.entry.category} — ${formatInr(bubble.entry.amount)} for ${bubble.entry.person}", color = Positive)
+                            }
+                        }
+                    }
+                    is ChatBubble.PendingBalance -> {
+                        GlassSurface(modifier = Modifier.fillMaxWidth()) {
+                            Column {
+                                Text("Set ${bubble.update.account} balance?", fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.height(6.dp))
+                                Text(formatInr(bubble.update.balance), fontWeight = FontWeight.SemiBold)
+                                Spacer(Modifier.height(10.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button(onClick = {
+                                        onSetAccountBalance(bubble.update.account, bubble.update.balance)
+                                        val idx = bubbles.indexOf(bubble)
+                                        if (idx >= 0) bubbles[idx] = ChatBubble.AppliedBalance(bubble.update)
+                                    }) { Text("Set") }
+                                    OutlinedButton(onClick = {
+                                        val idx = bubbles.indexOf(bubble)
+                                        if (idx >= 0) bubbles.removeAt(idx)
+                                    }) { Text("Discard") }
+                                }
+                            }
+                        }
+                    }
+                    is ChatBubble.AppliedBalance -> {
+                        GlassSurface(modifier = Modifier.fillMaxWidth()) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("✅", modifier = Modifier.padding(end = 8.dp))
+                                Text("${bubble.update.account} balance set to ${formatInr(bubble.update.balance)}", color = Positive)
                             }
                         }
                     }

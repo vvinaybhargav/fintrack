@@ -4,8 +4,10 @@ import android.content.Context
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestoreSettings
 import com.google.firebase.firestore.PersistentCacheSettings
+import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -20,6 +22,11 @@ interface FinanceRepository {
     fun observeGoals(): Flow<List<Goal>>
     suspend fun addGoal(goal: Goal)
     suspend fun deleteGoal(id: String)
+    fun observeAccounts(): Flow<List<Account>>
+    /** Absolute overwrite — used for manual edits and explicit "X balance is Y" statements. */
+    suspend fun setAccountBalance(name: String, balance: Double)
+    /** Atomic +/- applied when a transaction is tagged with an account (creates the account at 0 first if new). */
+    suspend fun adjustAccountBalance(name: String, delta: Double)
     fun isReady(): Boolean
 }
 
@@ -69,6 +76,13 @@ class FirestoreFinanceRepository(private val context: Context) : FinanceReposito
 
     private fun goalsCollection() =
         firestore?.collection("workspaces")?.document(WORKSPACE_ID)?.collection("goals")
+
+    private fun accountsCollection() =
+        firestore?.collection("workspaces")?.document(WORKSPACE_ID)?.collection("accounts")
+
+    /** Normalizes an account name to a stable doc id so "icici"/"ICICI"/"Icici" all resolve to one account. */
+    private fun accountDocId(name: String) =
+        name.trim().uppercase().replace(Regex("[^A-Z0-9]+"), "_").trim('_').ifBlank { "ACCOUNT" }
 
     override fun observeEntries(): Flow<List<Entry>> = callbackFlow {
         val col = entriesCollection()
@@ -138,5 +152,40 @@ class FirestoreFinanceRepository(private val context: Context) : FinanceReposito
 
     override suspend fun deleteGoal(id: String) {
         goalsCollection()?.document(id)?.delete()
+    }
+
+    override fun observeAccounts(): Flow<List<Account>> = callbackFlow {
+        val col = accountsCollection()
+        if (col == null) {
+            trySend(emptyList())
+            awaitClose { }
+            return@callbackFlow
+        }
+        val registration = col.addSnapshotListener { snapshot, _ ->
+            val list = snapshot?.documents?.mapNotNull { doc ->
+                doc.data?.let { Account.fromMap(doc.id, it) }
+            } ?: emptyList()
+            trySend(list.sortedBy { it.name })
+        }
+        awaitClose { registration.remove() }
+    }
+
+    override suspend fun setAccountBalance(name: String, balance: Double) {
+        val col = accountsCollection() ?: return
+        col.document(accountDocId(name)).set(
+            mapOf("name" to name.trim().uppercase(), "balance" to balance, "updatedAt" to System.currentTimeMillis())
+        )
+    }
+
+    override suspend fun adjustAccountBalance(name: String, delta: Double) {
+        val col = accountsCollection() ?: return
+        col.document(accountDocId(name)).set(
+            mapOf(
+                "name" to name.trim().uppercase(),
+                "balance" to FieldValue.increment(delta),
+                "updatedAt" to System.currentTimeMillis()
+            ),
+            SetOptions.merge()
+        )
     }
 }

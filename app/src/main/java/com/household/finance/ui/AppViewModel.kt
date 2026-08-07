@@ -3,6 +3,7 @@ package com.household.finance.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.household.finance.data.Account
 import com.household.finance.data.AppSettings
 import com.household.finance.data.EmergencyFund
 import com.household.finance.data.Entry
@@ -41,6 +42,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val _goals = MutableStateFlow<List<Goal>>(emptyList())
     val goals: StateFlow<List<Goal>> = _goals.asStateFlow()
 
+    private val _accounts = MutableStateFlow<List<Account>>(emptyList())
+    val accounts: StateFlow<List<Account>> = _accounts.asStateFlow()
+
     init {
         viewModelScope.launch {
             settings.nameMeFlow.collect { _nameMe.value = it }
@@ -65,13 +69,31 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     launch {
                         repository.observeGoals().collect { _goals.value = it }
                     }
+                    launch {
+                        repository.observeAccounts().collect { _accounts.value = it }
+                    }
                 }
             }
         }
     }
 
+    /**
+     * Adding a NEW entry (no id yet) tagged with an account applies its signed amount to that
+     * account's balance atomically — creating the account at 0 first if it doesn't exist yet.
+     * Edits to existing entries do not re-adjust the balance (correct it manually if needed).
+     */
     fun addEntry(entry: Entry) {
-        viewModelScope.launch { repository.addEntry(entry) }
+        viewModelScope.launch {
+            val isNew = entry.id.isBlank()
+            repository.addEntry(entry)
+            if (isNew && !entry.accountName.isNullOrBlank()) {
+                repository.adjustAccountBalance(entry.accountName, entry.signedAccountAmount)
+            }
+        }
+    }
+
+    fun setAccountBalance(name: String, balance: Double) {
+        viewModelScope.launch { repository.setAccountBalance(name, balance) }
     }
 
     fun deleteEntry(id: String) {

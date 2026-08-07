@@ -30,6 +30,7 @@ import com.household.finance.ui.PinLockScreen
 import com.household.finance.ui.SettingsScreen
 import com.household.finance.ui.theme.GlassBackdrop
 import com.household.finance.ui.theme.HouseholdFinanceTheme
+import com.household.finance.widget.WidgetUpdater
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -38,10 +39,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val startRoute = intent?.getStringExtra("start_route")?.takeIf { it in setOf("dashboard", "add", "entries", "ai", "settings") } ?: "dashboard"
         setContent {
             HouseholdFinanceTheme {
                 GlassBackdrop {
-                    AppRoot(viewModel)
+                    AppRoot(viewModel, startRoute)
                 }
             }
         }
@@ -59,7 +61,7 @@ private val tabs = listOf(
 )
 
 @Composable
-private fun AppRoot(viewModel: AppViewModel) {
+private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
     val pin by viewModel.settings.pinFlow.collectAsStateWithLifecycle(initialValue = "1234")
     var unlocked by remember { mutableStateOf(false) }
 
@@ -69,6 +71,7 @@ private fun AppRoot(viewModel: AppViewModel) {
     }
 
     val navController = rememberNavController()
+    val context = androidx.compose.ui.platform.LocalContext.current
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route ?: "dashboard"
 
@@ -76,6 +79,7 @@ private fun AppRoot(viewModel: AppViewModel) {
     val summary by viewModel.summary.collectAsStateWithLifecycle()
     val emergencyFund by viewModel.emergencyFund.collectAsStateWithLifecycle()
     val goals by viewModel.goals.collectAsStateWithLifecycle()
+    val accounts by viewModel.accounts.collectAsStateWithLifecycle()
     val nameMe by viewModel.nameMe.collectAsStateWithLifecycle()
     val nameWife by viewModel.nameWife.collectAsStateWithLifecycle()
     val openAiKey by viewModel.settings.openAiKeyFlow.collectAsStateWithLifecycle(initialValue = "")
@@ -86,6 +90,10 @@ private fun AppRoot(viewModel: AppViewModel) {
     val scope = rememberCoroutineScope()
 
     var editingEntry by remember { mutableStateOf<Entry?>(null) }
+
+    LaunchedEffect(summary.surplus, accounts) {
+        WidgetUpdater.update(context, summary.surplus, accounts)
+    }
 
     Scaffold(
         containerColor = androidx.compose.ui.graphics.Color.Transparent,
@@ -111,17 +119,19 @@ private fun AppRoot(viewModel: AppViewModel) {
     ) { padding ->
         NavHost(
             navController = navController,
-            startDestination = "dashboard",
+            startDestination = startRoute,
             modifier = Modifier.padding(padding).fillMaxSize()
         ) {
             composable("dashboard") {
                 DashboardScreen(
                     summary = summary,
                     entries = entries,
+                    accounts = accounts,
                     emergencyFundAmount = emergencyFund.currentAmount,
                     nameMe = nameMe,
                     nameWife = nameWife,
-                    onSetEmergencyFund = { viewModel.setEmergencyFund(it) }
+                    onSetEmergencyFund = { viewModel.setEmergencyFund(it) },
+                    onSetAccountBalance = { name, balance -> viewModel.setAccountBalance(name, balance) }
                 )
             }
             composable("add") {
@@ -158,6 +168,7 @@ private fun AppRoot(viewModel: AppViewModel) {
                 AiHubScreen(
                     entries = entries,
                     goals = goals,
+                    accounts = accounts,
                     monthlySurplus = summary.surplus,
                     openAiKey = openAiKey,
                     categories = com.household.finance.data.categoriesFor(categoryLength),
@@ -165,7 +176,8 @@ private fun AppRoot(viewModel: AppViewModel) {
                     nameWife = nameWife,
                     onAddGoal = { viewModel.addGoal(it) },
                     onDeleteGoal = { viewModel.deleteGoal(it) },
-                    onAddEntry = { viewModel.addEntry(it) }
+                    onAddEntry = { viewModel.addEntry(it) },
+                    onSetAccountBalance = { name, balance -> viewModel.setAccountBalance(name, balance) }
                 )
             }
             composable("settings") {

@@ -1,6 +1,7 @@
 package com.household.finance.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.*
@@ -9,6 +10,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.household.finance.data.Account
 import com.household.finance.data.Bucket
 import com.household.finance.data.Entry
 import com.household.finance.data.PolicyStatus
@@ -40,10 +42,12 @@ fun formatInr(value: Double): String {
 fun DashboardScreen(
     summary: DashboardSummary,
     entries: List<Entry>,
+    accounts: List<Account>,
     emergencyFundAmount: Double,
     nameMe: String,
     nameWife: String,
-    onSetEmergencyFund: (Double) -> Unit
+    onSetEmergencyFund: (Double) -> Unit,
+    onSetAccountBalance: (String, Double) -> Unit
 ) {
     var efInput by remember(emergencyFundAmount) { mutableStateOf(emergencyFundAmount.toInt().toString()) }
 
@@ -52,6 +56,21 @@ fun DashboardScreen(
     val nudges = remember(entries) { InsightsCoach.fallbackNudges(entries) }
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        if (accounts.isNotEmpty()) {
+            item {
+                GlassSurface(modifier = Modifier.fillMaxWidth()) {
+                    Column {
+                        Text("AVAILABLE BALANCES", style = MaterialTheme.typography.labelLarge)
+                        Text("Tap an account to correct its balance anytime.", style = MaterialTheme.typography.bodySmall)
+                        Spacer(Modifier.height(10.dp))
+                        accounts.forEach { account ->
+                            AccountRow(account = account, onSave = { onSetAccountBalance(account.name, it) })
+                        }
+                    }
+                }
+            }
+        }
+
         item {
             GlassSurface(modifier = Modifier.fillMaxWidth()) {
                 Column {
@@ -240,5 +259,43 @@ private fun SummaryRow(label: String, value: String, bold: Boolean = false, acce
     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp), horizontalArrangement = Arrangement.SpaceBetween) {
         Text(label, fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal)
         Text(value, fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal, color = accent ?: MaterialTheme.colorScheme.onSurface)
+    }
+}
+
+@Composable
+private fun AccountRow(account: Account, onSave: (Double) -> Unit) {
+    var editing by remember { mutableStateOf(false) }
+    var input by remember(account.balance, editing) { mutableStateOf(account.balance.toInt().toString()) }
+
+    Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+        if (editing) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(account.name, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                OutlinedTextField(
+                    value = input,
+                    onValueChange = { input = it.filter { c -> c.isDigit() || c == '-' } },
+                    singleLine = true,
+                    modifier = Modifier.width(140.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                TextButton(onClick = {
+                    onSave(input.toDoubleOrNull() ?: account.balance)
+                    editing = false
+                }) { Text("Save") }
+            }
+        } else {
+            Row(
+                Modifier.fillMaxWidth().clickable { editing = true },
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(account.name, fontWeight = FontWeight.SemiBold)
+                Text(
+                    formatInr(account.balance),
+                    fontWeight = FontWeight.Bold,
+                    color = if (account.balance < 0) Warning else Positive
+                )
+            }
+        }
     }
 }

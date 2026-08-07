@@ -18,11 +18,16 @@ data class Entry(
     val frequency: Frequency = Frequency.MONTHLY,
     val note: String = "",
     val maturityYear: Int? = null,
+    val accountName: String? = null,
     val createdAt: Long = System.currentTimeMillis()
 ) {
     /** Amount normalized to a per-month figure, annual entries divided by 12. */
     val monthlyAmount: Double
         get() = if (frequency == Frequency.ANNUAL) amount / 12.0 else amount
+
+    /** Signed impact on a tagged account's balance: money out for expense/savings, in for income. */
+    val signedAccountAmount: Double
+        get() = if (type == EntryType.INCOME) amount else -amount
 
     fun toMap(): Map<String, Any?> = mapOf(
         "person" to person,
@@ -33,6 +38,7 @@ data class Entry(
         "frequency" to frequency.name,
         "note" to note,
         "maturityYear" to maturityYear,
+        "accountName" to accountName,
         "createdAt" to createdAt
     )
 
@@ -47,7 +53,24 @@ data class Entry(
             frequency = runCatching { Frequency.valueOf(map["frequency"] as String) }.getOrDefault(Frequency.MONTHLY),
             note = map["note"] as? String ?: "",
             maturityYear = (map["maturityYear"] as? Number)?.toInt(),
+            accountName = map["accountName"] as? String,
             createdAt = (map["createdAt"] as? Number)?.toLong() ?: 0L
+        )
+    }
+}
+
+data class Account(
+    val name: String = "",
+    val balance: Double = 0.0,
+    val updatedAt: Long = System.currentTimeMillis()
+) {
+    fun toMap(): Map<String, Any?> = mapOf("name" to name, "balance" to balance, "updatedAt" to updatedAt)
+
+    companion object {
+        fun fromMap(id: String, map: Map<String, Any?>): Account = Account(
+            name = map["name"] as? String ?: id,
+            balance = (map["balance"] as? Number)?.toDouble() ?: 0.0,
+            updatedAt = (map["updatedAt"] as? Number)?.toLong() ?: 0L
         )
     }
 }
