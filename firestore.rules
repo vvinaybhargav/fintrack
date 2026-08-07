@@ -1,0 +1,11 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Private two-user household app: no auth, so lock access to the single
+    // known workspace document path used by the app. Do not open this up to
+    // all documents ("/{document=**}") — that would make it public.
+    match /workspaces/household/{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
