@@ -1,5 +1,6 @@
 package com.household.finance.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.*
@@ -62,6 +63,73 @@ fun DashboardScreen(
                     Divider(Modifier.padding(vertical = 10.dp), color = androidx.compose.ui.graphics.Color(0x22FFFFFF))
                     SummaryRow("Surplus", formatInr(summary.surplus), bold = true, accent = if (summary.surplus >= 0) Positive else Warning)
                     SummaryRow("Savings Rate", String.format(Locale.US, "%.1f%%", summary.savingsRatePct), bold = true, accent = Positive)
+                }
+            }
+        }
+
+        if (summary.categorySpend.isNotEmpty()) {
+            item {
+                GlassSurface(modifier = Modifier.fillMaxWidth()) {
+                    Column {
+                        Text("CATEGORY SPEND", style = MaterialTheme.typography.labelLarge)
+                        Spacer(Modifier.height(12.dp))
+                        val maxAmount = summary.categorySpend.maxOf { it.monthlyAmount }.coerceAtLeast(1.0)
+                        summary.categorySpend.forEach { c ->
+                            Column(Modifier.padding(bottom = 10.dp)) {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(c.category, style = MaterialTheme.typography.bodyMedium)
+                                    Text(formatInr(c.monthlyAmount) + "/mo", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                }
+                                Spacer(Modifier.height(6.dp))
+                                Box(Modifier.fillMaxWidth().height(6.dp).background(androidx.compose.ui.graphics.Color(0x1AFFFFFF), androidx.compose.foundation.shape.RoundedCornerShape(3.dp))) {
+                                    Box(
+                                        Modifier
+                                            .fillMaxWidth(fraction = (c.monthlyAmount / maxAmount).toFloat().coerceIn(0f, 1f))
+                                            .height(6.dp)
+                                            .background(
+                                                androidx.compose.ui.graphics.Brush.horizontalGradient(
+                                                    listOf(com.household.finance.ui.theme.Violet, com.household.finance.ui.theme.Cyan)
+                                                ),
+                                                androidx.compose.foundation.shape.RoundedCornerShape(3.dp)
+                                            )
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        val recurring = remember(entries) { Calculations.recurringCommitments(entries) }
+        if (recurring.isNotEmpty()) {
+            item {
+                GlassSurface(modifier = Modifier.fillMaxWidth()) {
+                    Column {
+                        Text("EMIS & RECURRING — MONTHLY → YEARLY", style = MaterialTheme.typography.labelLarge)
+                        Text("For arranging a whole year's budget at once.", style = MaterialTheme.typography.bodySmall)
+                        Spacer(Modifier.height(12.dp))
+                        recurring.forEach { item ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column {
+                                    Text("${item.entry.category} (${item.entry.person})", style = MaterialTheme.typography.bodyMedium)
+                                    Text(formatInr(item.monthlyAmount) + "/mo", style = MaterialTheme.typography.bodySmall)
+                                }
+                                Text(formatInr(item.yearlyAmount) + "/yr", fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                        Divider(Modifier.padding(vertical = 10.dp), color = androidx.compose.ui.graphics.Color(0x22FFFFFF))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Total fixed commitments", fontWeight = FontWeight.Bold)
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(formatInr(recurring.sumOf { it.monthlyAmount }) + "/mo", fontWeight = FontWeight.Bold)
+                                Text(formatInr(recurring.sumOf { it.yearlyAmount }) + "/yr", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
                 }
             }
         }

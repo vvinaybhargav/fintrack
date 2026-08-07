@@ -15,6 +15,9 @@ data class ChatMessage(val role: String, val content: String) // role: "user" or
 
 data class AnomalyFlag(val entryId: String, val label: String, val reason: String)
 
+/** Either a plain answer, or a parsed transaction ready for one-tap confirm (chat-based entry). */
+data class ChatResult(val replyText: String?, val draftEntry: Entry?)
+
 /**
  * All OpenAI-backed features, gpt-4o-mini only, called strictly on user action
  * (never automatically) to keep API cost near zero for a household use case.
@@ -58,12 +61,23 @@ object FinanceAi {
         }
     }
 
-    /** "Chat with your finances" — answers a question grounded only in the household's real entries. */
-    fun chat(question: String, history: List<ChatMessage>, entries: List<Entry>, apiKey: String): String {
+    /**
+     * "Chat with your finances" — doubles as chat-based entry: if the message describes a transaction
+     * ("paid 22k emi", "add 4500 wife music class"), returns a draft [Entry] to confirm instead of text.
+     * Otherwise answers the question grounded only in the household's real entries.
+     */
+    fun chat(question: String, history: List<ChatMessage>, entries: List<Entry>, categories: List<String>, nameMe: String, nameWife: String, apiKey: String): ChatResult {
         val system = """
             You are a household budgeting assistant for an Indian married couple using an app called
-            Household Finance. Answer ONLY using the data below — never invent numbers. Amounts are in INR.
-            Be concise (2-5 sentences), warm, neutral, and never judgmental about spending choices.
+            Household Finance. Amounts are in INR.
+
+            If the user's latest message is REPORTING A NEW TRANSACTION (an expense, income, or saving —
+            e.g. "paid 22k emi", "add 4500 wife music class", "20k rd"), reply with ONLY a single line:
+            ENTRY:{"person":"$nameMe or $nameWife","type":"INCOME|EXPENSE|SAVINGS","bucket":"JOINT|PERSONAL_ME|PERSONAL_WIFE","category":"one of: ${categories.joinToString(", ")}","amount":number,"frequency":"MONTHLY|ANNUAL","note":"short string"}
+            RD, FD, PPF, SIP, LIC, Mutual Funds, Stocks, Gold are SAVINGS not EXPENSE. No prose, no markdown, just that one line.
+
+            Otherwise, answer the user's question using ONLY the data below — never invent numbers.
+            Be concise (2-5 sentences), warm, neutral, never judgmental about spending choices.
             If the data doesn't cover the question, say so plainly.
 
             Current entries:
@@ -72,7 +86,29 @@ object FinanceAi {
 
         val historyText = history.takeLast(6).joinToString("\n") { "${it.role}: ${it.content}" }
         val prompt = if (historyText.isBlank()) question else "$historyText\nuser: $question"
-        return chatCompletion(apiKey, system, prompt, temperature = 0.4)
+        val raw = chatCompletion(apiKey, system, prompt, temperature = 0.2).trim()
+
+        if (raw.startsWith("ENTRY:")) {
+            val jsonText = raw.removePrefix("ENTRY:").trim()
+                .removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
+            val parsed = runCatching {
+                val json = JSONObject(jsonText)
+                Entry(
+                    person = json.optString("person", nameMe),
+                    type = runCatching { com.household.finance.data.EntryType.valueOf(json.getString("type")) }
+                        .getOrDefault(com.household.finance.data.EntryType.EXPENSE),
+                    bucket = runCatching { com.household.finance.data.Bucket.valueOf(json.getString("bucket")) }
+                        .getOrDefault(com.household.finance.data.Bucket.JOINT),
+                    category = json.optString("category", categories.firstOrNull() ?: "Other"),
+                    amount = json.optDouble("amount", 0.0),
+                    frequency = runCatching { com.household.finance.data.Frequency.valueOf(json.getString("frequency")) }
+                        .getOrDefault(com.household.finance.data.Frequency.MONTHLY),
+                    note = json.optString("note", question)
+                )
+            }.getOrNull()
+            if (parsed != null && parsed.amount > 0) return ChatResult(null, parsed)
+        }
+        return ChatResult(raw, null)
     }
 
     /** Smart budget suggestions: a proposed monthly cap per category based on actual spend. */

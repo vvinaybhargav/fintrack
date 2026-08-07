@@ -116,3 +116,10 @@ fun categoriesFor(length: CategoryListLength): List<String> = when (length) {
 val DEFAULT_CATEGORIES = MEDIUM_CATEGORIES
 
 val INVESTMENT_CATEGORIES = setOf("LIC", "RD", "FD", "PPF", "SIP", "Mutual Funds", "Stocks", "Gold")
+
+/** Fixed/recurring commitments — shown separately on the dashboard with monthly + annualized totals. */
+val RECURRING_CATEGORIES = setOf(
+    "EMI", "Rent", "Health Insurance", "Life Insurance", "Car Insurance", "Home Insurance",
+    "LIC", "Music Classes", "Tuition/School Fees", "RD", "FD", "PPF", "SIP", "Mutual Funds",
+    "Subscriptions"
+)

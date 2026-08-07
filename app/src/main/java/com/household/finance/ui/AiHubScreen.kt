@@ -21,6 +21,7 @@ import com.household.finance.logic.AnomalyFlag
 import com.household.finance.logic.ChatMessage
 import com.household.finance.logic.FinanceAi
 import com.household.finance.ui.theme.GlassSurface
+import com.household.finance.ui.theme.Positive
 import com.household.finance.ui.theme.Warning
 
 private enum class AiTab { CHAT, BUDGET, ANOMALIES, GOALS }
@@ -31,15 +32,19 @@ fun AiHubScreen(
     goals: List<Goal>,
     monthlySurplus: Double,
     openAiKey: String,
+    categories: List<String>,
+    nameMe: String,
+    nameWife: String,
     onAddGoal: (Goal) -> Unit,
-    onDeleteGoal: (String) -> Unit
+    onDeleteGoal: (String) -> Unit,
+    onAddEntry: (Entry) -> Unit
 ) {
     var tab by remember { mutableStateOf(AiTab.CHAT) }
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         if (openAiKey.isBlank()) {
             GlassSurface(modifier = Modifier.fillMaxWidth()) {
-                Text("Add an OpenAI key in Settings to unlock AI features: chat, budget suggestions, anomaly detection, and goal planning.")
+                Text("Add an OpenAI key in Settings to unlock AI features: chat-based entries, budget suggestions, anomaly detection, and goal planning.")
             }
             return
         }
@@ -52,7 +57,7 @@ fun AiHubScreen(
         Spacer(Modifier.height(14.dp))
 
         when (tab) {
-            AiTab.CHAT -> ChatPane(entries, openAiKey)
+            AiTab.CHAT -> ChatPane(entries, categories, nameMe, nameWife, openAiKey, onAddEntry)
             AiTab.BUDGET -> BudgetPane(entries, openAiKey)
             AiTab.ANOMALIES -> AnomaliesPane(entries, openAiKey)
             AiTab.GOALS -> GoalsPane(goals, monthlySurplus, openAiKey, onAddGoal, onDeleteGoal)
@@ -75,41 +80,99 @@ private fun SingleChoiceSegmented(options: List<String>, selectedIndex: Int, onS
     }
 }
 
+private sealed class ChatBubble {
+    data class Text(val role: String, val content: String) : ChatBubble()
+    data class PendingEntry(val entry: Entry) : ChatBubble()
+    data class AddedEntry(val entry: Entry) : ChatBubble()
+}
+
 @Composable
-private fun ChatPane(entries: List<Entry>, apiKey: String) {
+private fun ChatPane(
+    entries: List<Entry>,
+    categories: List<String>,
+    nameMe: String,
+    nameWife: String,
+    apiKey: String,
+    onAddEntry: (Entry) -> Unit
+) {
     var input by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    val messages = remember { mutableStateListOf<ChatMessage>() }
+    val history = remember { mutableStateListOf<ChatMessage>() }
+    val bubbles = remember { mutableStateListOf<ChatBubble>() }
 
     fun send() {
         val question = input.trim()
         if (question.isBlank() || loading) return
-        messages.add(ChatMessage("user", question))
+        bubbles.add(ChatBubble.Text("user", question))
+        history.add(ChatMessage("user", question))
         input = ""
         loading = true
         error = null
         Thread {
-            val result = runCatching { FinanceAi.chat(question, messages.toList(), entries, apiKey) }
-            result.onSuccess { messages.add(ChatMessage("assistant", it)) }
+            val result = runCatching { FinanceAi.chat(question, history.toList(), entries, categories, nameMe, nameWife, apiKey) }
+            result.onSuccess { r ->
+                if (r.draftEntry != null) {
+                    bubbles.add(ChatBubble.PendingEntry(r.draftEntry))
+                    history.add(ChatMessage("assistant", "Parsed a transaction, awaiting confirmation."))
+                } else if (r.replyText != null) {
+                    bubbles.add(ChatBubble.Text("assistant", r.replyText))
+                    history.add(ChatMessage("assistant", r.replyText))
+                }
+            }
             result.onFailure { error = "Couldn't reach OpenAI — check your key and connection." }
             loading = false
         }.start()
     }
 
     Column(Modifier.fillMaxSize()) {
-        if (messages.isEmpty()) {
+        if (bubbles.isEmpty()) {
             GlassSurface(modifier = Modifier.fillMaxWidth()) {
-                Text("Ask things like \"how much did we spend on eating out this month\" or \"can we afford a ₹2L trip\".", style = MaterialTheme.typography.bodySmall)
+                Text(
+                    "This is chat-based entry: type \"22k emi\" or \"paid 4500 wife music class\" to log it directly, or ask a question like \"how much did we spend on eating out this month\".",
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
             Spacer(Modifier.height(10.dp))
         }
         LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            items(messages) { msg ->
-                val isUser = msg.role == "user"
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start) {
-                    GlassSurface(modifier = Modifier.fillMaxWidth(0.85f)) {
-                        Text(msg.content)
+            items(bubbles) { bubble ->
+                when (bubble) {
+                    is ChatBubble.Text -> {
+                        val isUser = bubble.role == "user"
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start) {
+                            GlassSurface(modifier = Modifier.fillMaxWidth(0.85f)) { Text(bubble.content) }
+                        }
+                    }
+                    is ChatBubble.PendingEntry -> {
+                        GlassSurface(modifier = Modifier.fillMaxWidth()) {
+                            Column {
+                                Text("Log this entry?", fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.height(6.dp))
+                                Text("${bubble.entry.category} — ${bubble.entry.person} · ${bubble.entry.type} · ${bubble.entry.bucket}", style = MaterialTheme.typography.bodySmall)
+                                Text(formatInr(bubble.entry.amount) + if (bubble.entry.frequency.name == "ANNUAL") "/yr" else "/mo", fontWeight = FontWeight.SemiBold)
+                                Spacer(Modifier.height(10.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button(onClick = {
+                                        onAddEntry(bubble.entry)
+                                        val idx = bubbles.indexOf(bubble)
+                                        if (idx >= 0) bubbles[idx] = ChatBubble.AddedEntry(bubble.entry)
+                                    }) { Text("Add") }
+                                    OutlinedButton(onClick = {
+                                        val idx = bubbles.indexOf(bubble)
+                                        if (idx >= 0) bubbles.removeAt(idx)
+                                    }) { Text("Discard") }
+                                }
+                            }
+                        }
+                    }
+                    is ChatBubble.AddedEntry -> {
+                        GlassSurface(modifier = Modifier.fillMaxWidth()) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("✅", modifier = Modifier.padding(end = 8.dp))
+                                Text("Added ${bubble.entry.category} — ${formatInr(bubble.entry.amount)} for ${bubble.entry.person}", color = Positive)
+                            }
+                        }
                     }
                 }
             }
@@ -127,7 +190,7 @@ private fun ChatPane(entries: List<Entry>, apiKey: String) {
             OutlinedTextField(
                 value = input,
                 onValueChange = { input = it },
-                placeholder = { Text("Ask about your finances…") },
+                placeholder = { Text("Log an entry or ask a question…") },
                 modifier = Modifier.weight(1f),
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),

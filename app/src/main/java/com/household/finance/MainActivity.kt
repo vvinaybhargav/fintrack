@@ -152,13 +152,20 @@ private fun AppRoot(viewModel: AppViewModel) {
                 )
             }
             composable("ai") {
+                val categoryLength by viewModel.settings.categoryLengthFlow.collectAsStateWithLifecycle(
+                    initialValue = com.household.finance.data.CategoryListLength.MEDIUM
+                )
                 AiHubScreen(
                     entries = entries,
                     goals = goals,
                     monthlySurplus = summary.surplus,
                     openAiKey = openAiKey,
+                    categories = com.household.finance.data.categoriesFor(categoryLength),
+                    nameMe = nameMe,
+                    nameWife = nameWife,
                     onAddGoal = { viewModel.addGoal(it) },
-                    onDeleteGoal = { viewModel.deleteGoal(it) }
+                    onDeleteGoal = { viewModel.deleteGoal(it) },
+                    onAddEntry = { viewModel.addEntry(it) }
                 )
             }
             composable("settings") {
