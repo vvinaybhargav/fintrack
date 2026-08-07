@@ -76,6 +76,17 @@ object Calculations {
 
     fun emergencyFundTarget(totalExpenses: Double): Double = totalExpenses * 6.0
 
+    /** Income/expense/savings totals grouped by the calendar month entries were logged in, oldest first. */
+    fun monthlyTrend(entries: List<Entry>, months: Int = 6): List<Pair<String, DashboardSummary>> {
+        val format = java.text.SimpleDateFormat("MMM yyyy", java.util.Locale.US)
+        return entries
+            .groupBy { format.format(java.util.Date(it.createdAt)) }
+            .toList()
+            .sortedBy { (_, items) -> items.minOf { it.createdAt } }
+            .takeLast(months)
+            .map { (label, items) -> label to summarize(items) }
+    }
+
     fun policyStatus(entry: Entry): PolicyStatus {
         if (entry.category !in INVESTMENT_CATEGORIES) return PolicyStatus.ACTIVE
         val year = entry.maturityYear ?: return PolicyStatus.ACTIVE

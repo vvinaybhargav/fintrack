@@ -177,7 +177,9 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                     onDeleteAccount = { viewModel.deleteAccount(it) },
                     onSetGoalCompleted = { id, completed -> viewModel.setGoalCompleted(id, completed) },
                     onAddGoalContribution = { id, amount -> viewModel.addGoalContribution(id, amount) },
-                    onSetLoanSettled = { id, settled -> viewModel.setLoanSettled(id, settled) }
+                    onDeleteGoal = { viewModel.deleteGoal(it) },
+                    onSetLoanSettled = { id, settled -> viewModel.setLoanSettled(id, settled) },
+                    onSetLoanDueDate = { id, date -> viewModel.setLoanDueDate(id, date) }
                 )
             }
             composable("add") {

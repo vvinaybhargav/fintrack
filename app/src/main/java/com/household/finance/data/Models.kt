@@ -149,6 +149,8 @@ data class Loan(
     /** Which of the lender's accounts the money actually left from, if mentioned - debited when the
      *  loan is created, credited back when it's settled, so balances stay honest either way. */
     val accountName: String? = null,
+    /** Optional "settle by" date as an ISO string (yyyy-MM-dd), for a due-date reminder. */
+    val dueDate: String? = null,
     val createdAt: Long = System.currentTimeMillis()
 ) {
     fun toMap(): Map<String, Any?> = mapOf(
@@ -158,6 +160,7 @@ data class Loan(
         "note" to note,
         "settled" to settled,
         "accountName" to accountName,
+        "dueDate" to dueDate,
         "createdAt" to createdAt
     )
 
@@ -170,6 +173,7 @@ data class Loan(
             note = map["note"] as? String ?: "",
             settled = map["settled"] as? Boolean ?: false,
             accountName = map["accountName"] as? String,
+            dueDate = map["dueDate"] as? String,
             createdAt = (map["createdAt"] as? Number)?.toLong() ?: 0L
         )
     }

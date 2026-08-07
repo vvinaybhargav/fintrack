@@ -83,7 +83,9 @@ fun DashboardScreen(
     onDeleteAccount: (String) -> Unit,
     onSetGoalCompleted: (String, Boolean) -> Unit,
     onAddGoalContribution: (String, Double) -> Unit,
-    onSetLoanSettled: (String, Boolean) -> Unit
+    onDeleteGoal: (String) -> Unit,
+    onSetLoanSettled: (String, Boolean) -> Unit,
+    onSetLoanDueDate: (String, String?) -> Unit
 ) {
     var view by remember { mutableStateOf(DashboardView.PERSONAL) }
     // Emergency fund and its edit callback both follow whichever view (Personal/Joint) is selected.
@@ -123,6 +125,7 @@ fun DashboardScreen(
     val iOwe = remember(loans, nameMe) { loans.filter { !it.settled && it.borrower == nameMe } }
     val activeGoals = remember(goals) { goals.filter { !it.completed } }
     val completedGoals = remember(goals) { goals.filter { it.completed } }
+    val trend = remember(filteredEntries) { Calculations.monthlyTrend(filteredEntries) }
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
@@ -212,14 +215,24 @@ fun DashboardScreen(
                         SectionLabel(Icons.Filled.SwapHoriz, "IOUs")
                         Spacer(Modifier.height(10.dp))
                         owedToMe.forEach { loan ->
-                            LoanRow(text = "${loan.borrower} owes you ${formatInr(loan.amount)}", accent = Positive, note = loan.note) {
-                                onSetLoanSettled(loan.id, true)
-                            }
+                            LoanRow(
+                                text = "${loan.borrower} owes you ${formatInr(loan.amount)}",
+                                accent = Positive,
+                                note = loan.note,
+                                dueDate = loan.dueDate,
+                                onSettle = { onSetLoanSettled(loan.id, true) },
+                                onSetDueDate = { date -> onSetLoanDueDate(loan.id, date) }
+                            )
                         }
                         iOwe.forEach { loan ->
-                            LoanRow(text = "You owe ${loan.lender} ${formatInr(loan.amount)}", accent = Warning, note = loan.note) {
-                                onSetLoanSettled(loan.id, true)
-                            }
+                            LoanRow(
+                                text = "You owe ${loan.lender} ${formatInr(loan.amount)}",
+                                accent = Warning,
+                                note = loan.note,
+                                dueDate = loan.dueDate,
+                                onSettle = { onSetLoanSettled(loan.id, true) },
+                                onSetDueDate = { date -> onSetLoanDueDate(loan.id, date) }
+                            )
                         }
                     }
                 }
@@ -236,7 +249,8 @@ fun DashboardScreen(
                             GoalRow(
                                 goal = goal,
                                 onAddContribution = { amount -> onAddGoalContribution(goal.id, amount) },
-                                onMarkReached = { onSetGoalCompleted(goal.id, true) }
+                                onMarkReached = { onSetGoalCompleted(goal.id, true) },
+                                onDelete = { onDeleteGoal(goal.id) }
                             )
                         }
                         if (completedGoals.isNotEmpty()) {
@@ -248,7 +262,10 @@ fun DashboardScreen(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text("✅ ${goal.title}", style = MaterialTheme.typography.bodyMedium, color = Positive)
-                                    TextButton(onClick = { onSetGoalCompleted(goal.id, false) }) { Text("Undo") }
+                                    Row {
+                                        TextButton(onClick = { onSetGoalCompleted(goal.id, false) }) { Text("Undo") }
+                                        TextButton(onClick = { onDeleteGoal(goal.id) }) { Text("Delete") }
+                                    }
                                 }
                             }
                         }
@@ -390,6 +407,35 @@ fun DashboardScreen(
                 }
             }
 
+            if (trend.size > 1) {
+                item {
+                    GlassSurface(modifier = Modifier.fillMaxWidth()) {
+                        Column {
+                            SectionLabel(Icons.Filled.PieChart, "TRENDS — LEFT OVER BY MONTH")
+                            Spacer(Modifier.height(12.dp))
+                            val maxAbs = trend.maxOf { Math.abs(it.second.surplus) }.coerceAtLeast(1.0)
+                            trend.forEach { (label, monthSummary) ->
+                                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Text(label, style = MaterialTheme.typography.bodySmall, modifier = Modifier.width(70.dp))
+                                    Box(Modifier.weight(1f).height(8.dp).padding(horizontal = 6.dp)) {
+                                        Box(
+                                            Modifier
+                                                .fillMaxWidth(fraction = (Math.abs(monthSummary.surplus) / maxAbs).toFloat().coerceIn(0f, 1f))
+                                                .height(8.dp)
+                                                .background(
+                                                    if (monthSummary.surplus >= 0) Positive else Warning,
+                                                    androidx.compose.foundation.shape.RoundedCornerShape(3.dp)
+                                                )
+                                        )
+                                    }
+                                    Text(formatInr(monthSummary.surplus), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             if (nudges.isNotEmpty()) {
                 item {
                     GlassSurface(modifier = Modifier.fillMaxWidth()) {
@@ -429,7 +475,11 @@ private fun SectionLabel(icon: ImageVector, text: String) {
 }
 
 @Composable
-private fun LoanRow(text: String, accent: Color, note: String, onSettle: () -> Unit) {
+private fun LoanRow(text: String, accent: Color, note: String, dueDate: String?, onSettle: () -> Unit, onSetDueDate: (String?) -> Unit) {
+    var editingDate by remember { mutableStateOf(false) }
+    val today = remember { java.text.SimpleDateFormat("yyyy-MM-dd", Locale.US).format(java.util.Date()) }
+    val overdue = dueDate != null && dueDate < today
+
     Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text(text, color = accent, fontWeight = FontWeight.SemiBold)
@@ -437,6 +487,27 @@ private fun LoanRow(text: String, accent: Color, note: String, onSettle: () -> U
         }
         if (note.isNotBlank()) {
             Text(note, style = MaterialTheme.typography.bodySmall)
+        }
+        if (editingDate) {
+            var input by remember { mutableStateOf(dueDate ?: "") }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = input,
+                    onValueChange = { input = it },
+                    label = { Text("Due date (yyyy-MM-dd)") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(onClick = { onSetDueDate(input.trim().ifBlank { null }); editingDate = false }) { Text("Save") }
+                TextButton(onClick = { editingDate = false }) { Text("Cancel") }
+            }
+        } else {
+            Text(
+                if (dueDate != null) "Due $dueDate" + if (overdue) " — overdue" else "" else "Set a due date",
+                style = MaterialTheme.typography.bodySmall,
+                color = if (overdue) Warning else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.clickable { editingDate = true }
+            )
         }
     }
 }
@@ -607,8 +678,9 @@ private fun BalanceEditForm(
 }
 
 @Composable
-private fun GoalRow(goal: Goal, onAddContribution: (Double) -> Unit, onMarkReached: () -> Unit) {
+private fun GoalRow(goal: Goal, onAddContribution: (Double) -> Unit, onMarkReached: () -> Unit, onDelete: () -> Unit) {
     var adding by remember { mutableStateOf(false) }
+    var confirmingDelete by remember { mutableStateOf(false) }
     val progress = if (goal.targetAmount > 0) (goal.savedSoFar / goal.targetAmount).coerceIn(0.0, 1.0) else 0.0
 
     Column(Modifier.padding(bottom = 10.dp)) {
@@ -629,10 +701,17 @@ private fun GoalRow(goal: Goal, onAddContribution: (Double) -> Unit, onMarkReach
                 onAdd = { amount -> onAddContribution(amount); adding = false },
                 onCancel = { adding = false }
             )
+        } else if (confirmingDelete) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Delete this goal?", style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = onDelete) { Text("Delete") }
+                TextButton(onClick = { confirmingDelete = false }) { Text("Cancel") }
+            }
         } else {
             Row {
                 TextButton(onClick = { adding = true }) { Text("Add contribution") }
                 TextButton(onClick = onMarkReached) { Text("Mark as reached") }
+                TextButton(onClick = { confirmingDelete = true }) { Text("Delete") }
             }
         }
     }

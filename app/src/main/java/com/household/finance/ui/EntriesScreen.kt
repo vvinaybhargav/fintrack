@@ -40,6 +40,7 @@ fun EntriesScreen(
     var view by remember { mutableStateOf(EntriesView.PERSONAL) }
     var categoryFilter by remember { mutableStateOf<String?>(null) }
     var monthFilter by remember { mutableStateOf<String?>(null) }
+    var searchQuery by remember { mutableStateOf("") }
 
     // Same split as the dashboard: Personal shows only this profile's own entries, Joint shows shared ones.
     val bucketFiltered = remember(entries, view, nameMe) {
@@ -52,10 +53,11 @@ fun EntriesScreen(
     val availableMonths = remember(bucketFiltered) {
         bucketFiltered.map { monthFormat.format(java.util.Date(it.createdAt)) }.distinct()
     }
-    val filtered = remember(bucketFiltered, categoryFilter, monthFilter) {
+    val filtered = remember(bucketFiltered, categoryFilter, monthFilter, searchQuery) {
         bucketFiltered.filter { entry ->
             (categoryFilter == null || entry.category == categoryFilter) &&
-                (monthFilter == null || monthFormat.format(java.util.Date(entry.createdAt)) == monthFilter)
+                (monthFilter == null || monthFormat.format(java.util.Date(entry.createdAt)) == monthFilter) &&
+                (searchQuery.isBlank() || entry.category.contains(searchQuery, ignoreCase = true) || entry.note.contains(searchQuery, ignoreCase = true))
         }
     }
 
@@ -92,6 +94,14 @@ fun EntriesScreen(
                 modifier = Modifier.weight(1f)
             )
         }
+
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            placeholder = { Text("Search category or note…") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+        )
 
         if (availableMonths.size > 1 || availableCategories.size > 1) {
             LazyRow(

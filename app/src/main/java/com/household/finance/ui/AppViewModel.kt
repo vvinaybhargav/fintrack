@@ -287,4 +287,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteLoan(id: String) {
         viewModelScope.launch { repository.deleteLoan(id) }
     }
+
+    fun setLoanDueDate(id: String, dueDate: String?) {
+        viewModelScope.launch { repository.setLoanDueDate(id, dueDate) }
+    }
 }

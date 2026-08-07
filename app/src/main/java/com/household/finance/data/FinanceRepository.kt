@@ -60,6 +60,7 @@ interface FinanceRepository {
     fun observeLoans(): Flow<List<Loan>>
     suspend fun addLoan(loan: Loan)
     suspend fun setLoanSettled(id: String, settled: Boolean)
+    suspend fun setLoanDueDate(id: String, dueDate: String?)
     suspend fun deleteLoan(id: String)
     /** Shared across both phones so either can switch to either profile with the same PIN. */
     fun observeProfiles(): Flow<List<Profile>>
@@ -259,6 +260,10 @@ class FirestoreFinanceRepository(private val context: Context) : FinanceReposito
 
     override suspend fun setLoanSettled(id: String, settled: Boolean) {
         loansCollection()?.document(id)?.set(mapOf("settled" to settled), SetOptions.merge())
+    }
+
+    override suspend fun setLoanDueDate(id: String, dueDate: String?) {
+        loansCollection()?.document(id)?.set(mapOf("dueDate" to dueDate), SetOptions.merge())
     }
 
     override suspend fun deleteLoan(id: String) {
