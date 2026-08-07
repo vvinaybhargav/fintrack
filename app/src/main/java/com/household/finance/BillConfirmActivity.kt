@@ -74,7 +74,8 @@ private fun BillConfirmScreen(billId: String?, onDone: () -> Unit) {
             val repository = FirestoreFinanceRepository(context)
             repository.configure(config)
             repository.markBillPaid(current.id, nameMe)
-            Toast.makeText(context, "Marked paid" + (current.accountName?.let { " — debited from $it" } ?: ""), Toast.LENGTH_SHORT).show()
+            val toastNote = current.toAccountName?.let { " — moved into $it" } ?: current.accountName?.let { " — debited from $it" } ?: ""
+            Toast.makeText(context, "Marked paid$toastNote", Toast.LENGTH_SHORT).show()
             onDone()
         }
     }
@@ -97,9 +98,14 @@ private fun BillConfirmScreen(billId: String?, onDone: () -> Unit) {
                     Spacer(Modifier.height(8.dp))
                     Text("${current.name} — ${formatInr(current.amount)}", style = MaterialTheme.typography.bodyMedium)
                     Text("Due ${current.dueDate}", style = MaterialTheme.typography.bodySmall)
-                    if (!current.accountName.isNullOrBlank()) {
-                        Spacer(Modifier.height(4.dp))
-                        Text("Confirming debits ${formatInr(current.amount)} from ${current.accountName}.", style = MaterialTheme.typography.bodySmall)
+                    run {
+                        val debitNote = current.accountName?.let { "debits ${formatInr(current.amount)} from $it" }
+                        val creditNote = current.toAccountName?.let { "moves ${formatInr(current.amount)} into $it" }
+                        val note = listOfNotNull(debitNote, creditNote).joinToString(" and ")
+                        if (note.isNotBlank()) {
+                            Spacer(Modifier.height(4.dp))
+                            Text("Confirming $note.", style = MaterialTheme.typography.bodySmall)
+                        }
                     }
                     Spacer(Modifier.height(14.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

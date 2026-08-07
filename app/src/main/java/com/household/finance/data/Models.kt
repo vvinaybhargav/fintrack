@@ -197,6 +197,10 @@ data class Bill(
     /** Next due date, ISO yyyy-MM-dd. */
     val dueDate: String = "",
     val accountName: String? = null,
+    /** If set, "Mark Paid" TRANSFERS the amount into this account instead of just debiting
+     *  [accountName] - a sinking fund, e.g. setting aside a yearly premium's monthly share
+     *  into a separate savings account ahead of the real due date. */
+    val toAccountName: String? = null,
     val type: BillType = BillType.OTHER,
     /** If true, marking paid advances dueDate by a month instead of deleting the bill. */
     val recurring: Boolean = true,
@@ -208,6 +212,7 @@ data class Bill(
         "amount" to amount,
         "dueDate" to dueDate,
         "accountName" to accountName,
+        "toAccountName" to toAccountName,
         "type" to type.name,
         "recurring" to recurring,
         "owner" to owner,
@@ -221,6 +226,7 @@ data class Bill(
             amount = (map["amount"] as? Number)?.toDouble() ?: 0.0,
             dueDate = map["dueDate"] as? String ?: "",
             accountName = map["accountName"] as? String,
+            toAccountName = map["toAccountName"] as? String,
             type = runCatching { BillType.valueOf(map["type"] as String) }.getOrDefault(BillType.OTHER),
             recurring = map["recurring"] as? Boolean ?: true,
             owner = map["owner"] as? String ?: "",

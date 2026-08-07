@@ -552,7 +552,7 @@ private fun BillsSection(bills: List<Bill>, nameMe: String, onAddBill: (Bill) ->
                     Text(
                         "${formatInr(bill.amount)} · due ${bill.dueDate}" +
                             (if (overdue) " — overdue" else "") +
-                            (bill.accountName?.let { " · $it" } ?: ""),
+                            (bill.toAccountName?.let { " · sets aside into $it" } ?: (bill.accountName?.let { " · $it" } ?: "")),
                         style = MaterialTheme.typography.bodySmall,
                         color = if (overdue) Warning else MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -569,11 +569,13 @@ private fun BillsSection(bills: List<Bill>, nameMe: String, onAddBill: (Bill) ->
                     }
                 }
             }
-            if (confirmingPaid && !bill.accountName.isNullOrBlank()) {
-                Text(
-                    "This debits ${formatInr(bill.amount)} from ${bill.accountName}.",
-                    style = MaterialTheme.typography.bodySmall
-                )
+            if (confirmingPaid) {
+                val debitNote = bill.accountName?.let { "debits ${formatInr(bill.amount)} from $it" }
+                val creditNote = bill.toAccountName?.let { "moves ${formatInr(bill.amount)} into $it" }
+                val note = listOfNotNull(debitNote, creditNote).joinToString(" and ")
+                if (note.isNotBlank()) {
+                    Text("This $note.", style = MaterialTheme.typography.bodySmall)
+                }
             }
         }
     }
@@ -594,6 +596,7 @@ private fun AddBillForm(onAdd: (Bill) -> Unit, onCancel: () -> Unit) {
     var amount by remember { mutableStateOf("") }
     var dueDate by remember { mutableStateOf("") }
     var accountName by remember { mutableStateOf("") }
+    var toAccountName by remember { mutableStateOf("") }
     var type by remember { mutableStateOf(BillType.EMI) }
 
     Column {
@@ -638,6 +641,18 @@ private fun AddBillForm(onAdd: (Bill) -> Unit, onCancel: () -> Unit) {
             singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
+        Spacer(Modifier.height(6.dp))
+        OutlinedTextField(
+            value = toAccountName,
+            onValueChange = { toAccountName = it },
+            label = { Text("Or: set aside into account (sinking fund, optional)") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Text(
+            "Use \"debit from\" to pay an external bill. Use \"set aside into\" to move the monthly share of a yearly cost into a savings account ahead of time.",
+            style = MaterialTheme.typography.bodySmall
+        )
         Spacer(Modifier.height(8.dp))
         Row {
             TextButton(
@@ -650,6 +665,7 @@ private fun AddBillForm(onAdd: (Bill) -> Unit, onCancel: () -> Unit) {
                             amount = amt,
                             dueDate = dueDate.trim(),
                             accountName = accountName.trim().ifBlank { null },
+                            toAccountName = toAccountName.trim().ifBlank { null },
                             type = type
                         )
                     )

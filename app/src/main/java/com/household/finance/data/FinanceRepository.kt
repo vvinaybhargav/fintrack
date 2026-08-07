@@ -13,6 +13,7 @@ import com.google.android.gms.tasks.Task
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.suspendCancellableCoroutine
 
 /** Minimal Task -> suspend bridge, avoiding a dependency on kotlinx-coroutines-play-services for just this. */
@@ -345,6 +346,10 @@ class FirestoreFinanceRepository(private val context: Context) : FinanceReposito
 
         if (!bill.accountName.isNullOrBlank()) {
             adjustAccountBalance(bill.accountName, -bill.amount, bill.owner, isNewAccount = false, editedBy = editedBy)
+        }
+        if (!bill.toAccountName.isNullOrBlank()) {
+            val isNewTarget = observeAccounts().first().none { it.name.equals(bill.toAccountName, ignoreCase = true) }
+            adjustAccountBalance(bill.toAccountName, bill.amount, bill.owner, isNewTarget, editedBy)
         }
 
         if (bill.recurring) {
