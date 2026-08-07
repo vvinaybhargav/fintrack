@@ -7,9 +7,18 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Lightbulb
+import androidx.compose.material.icons.filled.PieChart
+import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -17,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.household.finance.data.Account
@@ -109,6 +119,29 @@ fun DashboardScreen(
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .background(Brush.linearGradient(listOf(Violet, Cyan)), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        nameMe.take(1).uppercase(),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF120E2A)
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text("Hi, $nameMe", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text("Here's where things stand", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+
+        item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(
                     selected = view == DashboardView.PERSONAL,
@@ -145,7 +178,11 @@ fun DashboardScreen(
 
         if (accounts.isNotEmpty()) {
             item {
-                Text("Tap a balance to edit it", style = MaterialTheme.typography.bodySmall)
+                Column {
+                    SectionLabel(Icons.Filled.AccountBalanceWallet, "BALANCES")
+                    Spacer(Modifier.height(2.dp))
+                    Text("Tap a balance to edit it", style = MaterialTheme.typography.bodySmall)
+                }
             }
             item {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -165,7 +202,7 @@ fun DashboardScreen(
             item {
                 GlassSurface(modifier = Modifier.fillMaxWidth()) {
                     Column {
-                        Text("IOUs", style = MaterialTheme.typography.labelLarge)
+                        SectionLabel(Icons.Filled.SwapHoriz, "IOUs")
                         Spacer(Modifier.height(10.dp))
                         owedToMe.forEach { loan ->
                             LoanRow(text = "${loan.borrower} owes you ${formatInr(loan.amount)}", accent = Positive, note = loan.note) {
@@ -186,7 +223,7 @@ fun DashboardScreen(
             item {
                 GlassSurface(modifier = Modifier.fillMaxWidth()) {
                     Column {
-                        Text("GOALS", style = MaterialTheme.typography.labelLarge)
+                        SectionLabel(Icons.Filled.Flag, "GOALS")
                         Spacer(Modifier.height(10.dp))
                         activeGoals.forEach { goal ->
                             GoalRow(
@@ -217,9 +254,9 @@ fun DashboardScreen(
         item {
             GlassSurface(modifier = Modifier.fillMaxWidth()) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    MiniStat("Income", formatInr(summary.totalIncome))
-                    MiniStat("Expenses", formatInr(summary.totalExpenses))
-                    MiniStat("Savings", formatInr(summary.totalSavings))
+                    MiniStat("Income", formatInr(summary.totalIncome), Positive)
+                    MiniStat("Expenses", formatInr(summary.totalExpenses), Warning)
+                    MiniStat("Savings", formatInr(summary.totalSavings), Cyan)
                 }
             }
         }
@@ -228,7 +265,7 @@ fun DashboardScreen(
             item {
                 GlassSurface(modifier = Modifier.fillMaxWidth()) {
                     Column {
-                        Text("SPEND BY CATEGORY", style = MaterialTheme.typography.labelLarge)
+                        SectionLabel(Icons.Filled.PieChart, "SPEND BY CATEGORY")
                         Spacer(Modifier.height(10.dp))
                         val shown = orderedCategorySpend.take(6)
                         val maxAmount = shown.maxOf { it.second }.coerceAtLeast(1.0)
@@ -280,7 +317,7 @@ fun DashboardScreen(
             item {
                 GlassSurface(modifier = Modifier.fillMaxWidth()) {
                     Column {
-                        Text("EMERGENCY FUND", style = MaterialTheme.typography.labelLarge)
+                        SectionLabel(Icons.Filled.Shield, "EMERGENCY FUND")
                         Spacer(Modifier.height(10.dp))
                         Text("${formatInr(emergencyFundAmount)} of ${formatInr(target)} target (6× monthly expenses)", style = MaterialTheme.typography.bodySmall)
                         Spacer(Modifier.height(10.dp))
@@ -305,7 +342,7 @@ fun DashboardScreen(
                 item {
                     GlassSurface(modifier = Modifier.fillMaxWidth()) {
                         Column {
-                            Text("EMIS & RECURRING — MONTHLY → YEARLY", style = MaterialTheme.typography.labelLarge)
+                            SectionLabel(Icons.Filled.Repeat, "EMIS & RECURRING — MONTHLY → YEARLY")
                             Spacer(Modifier.height(12.dp))
                             recurring.forEach { item ->
                                 Row(
@@ -336,7 +373,7 @@ fun DashboardScreen(
                 item {
                     GlassSurface(modifier = Modifier.fillMaxWidth()) {
                         Column {
-                            Text("POLICIES & INVESTMENTS", style = MaterialTheme.typography.labelLarge)
+                            SectionLabel(Icons.Filled.VerifiedUser, "POLICIES & INVESTMENTS")
                             Spacer(Modifier.height(10.dp))
                             policies.forEach { p ->
                                 val status = Calculations.policyStatus(p)
@@ -358,7 +395,7 @@ fun DashboardScreen(
                 item {
                     GlassSurface(modifier = Modifier.fillMaxWidth()) {
                         Column {
-                            Text("INSIGHTS", style = MaterialTheme.typography.labelLarge)
+                            SectionLabel(Icons.Filled.Lightbulb, "INSIGHTS")
                             Spacer(Modifier.height(10.dp))
                             nudges.forEach { Text("• $it", modifier = Modifier.padding(vertical = 2.dp)) }
                         }
@@ -382,6 +419,16 @@ private fun HeroStat(label: String, value: String, accent: Color, modifier: Modi
     }
 }
 
+/** Small icon + all-caps label used for every card's section heading, for quick visual scanning. */
+@Composable
+private fun SectionLabel(icon: ImageVector, text: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, contentDescription = null, tint = Violet, modifier = Modifier.size(15.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(text, style = MaterialTheme.typography.labelLarge)
+    }
+}
+
 @Composable
 private fun LoanRow(text: String, accent: Color, note: String, onSettle: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
@@ -396,10 +443,10 @@ private fun LoanRow(text: String, accent: Color, note: String, onSettle: () -> U
 }
 
 @Composable
-private fun MiniStat(label: String, value: String) {
+private fun MiniStat(label: String, value: String, accent: Color = Color.Unspecified) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(label, style = MaterialTheme.typography.bodySmall)
-        Text(value, fontWeight = FontWeight.SemiBold)
+        Text(value, fontWeight = FontWeight.SemiBold, color = accent)
     }
 }
 
