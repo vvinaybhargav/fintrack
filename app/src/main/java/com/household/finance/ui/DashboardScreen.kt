@@ -53,7 +53,6 @@ import com.household.finance.ui.theme.InkRaised
 import com.household.finance.ui.theme.Positive
 import com.household.finance.ui.theme.Violet
 import com.household.finance.ui.theme.Warning
-import java.util.Locale
 
 fun formatInr(value: Double): String {
     val absVal = Math.abs(value)
