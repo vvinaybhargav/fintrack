@@ -7,7 +7,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.core.toMutablePreferences
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.action.ActionParameters
@@ -42,10 +41,11 @@ private val KEY_SURPLUS = stringPreferencesKey("surplus")
 private val KEY_ACCOUNTS = stringPreferencesKey("accounts") // "NAME:balance|NAME:balance"
 val START_ROUTE_KEY = ActionParameters.Key<String>("start_route")
 
-private val WidgetBackground = ColorProvider(day = Color(0xFF12141C), night = Color(0xFF12141C))
-private val WidgetTextPrimary = ColorProvider(day = Color(0xFFF3F3F7), night = Color(0xFFF3F3F7))
-private val WidgetTextSecondary = ColorProvider(day = Color(0xFFA5A8B8), night = Color(0xFFA5A8B8))
-private val WidgetAccent = ColorProvider(day = Color(0xFF8B7CF6), night = Color(0xFF8B7CF6))
+// Widget is intentionally single-themed (matches the app's dark glass look regardless of system theme).
+private val WidgetBackground = ColorProvider(Color(0xFF12141C))
+private val WidgetTextPrimary = ColorProvider(Color(0xFFF3F3F7))
+private val WidgetTextSecondary = ColorProvider(Color(0xFFA5A8B8))
+private val WidgetAccent = ColorProvider(Color(0xFF8B7CF6))
 
 private fun formatInrShort(value: Double): String {
     val absVal = Math.abs(value)
@@ -124,8 +124,8 @@ object WidgetUpdater {
         ids.forEach { id ->
             updateAppWidgetState(context, id) { prefs ->
                 prefs.toMutablePreferences().apply {
-                    this[KEY_SURPLUS] = formatInrShort(surplus)
-                    this[KEY_ACCOUNTS] = accountsEncoded
+                    set(KEY_SURPLUS, formatInrShort(surplus))
+                    set(KEY_ACCOUNTS, accountsEncoded)
                 }
             }
             HouseholdWidget().update(context, id)
