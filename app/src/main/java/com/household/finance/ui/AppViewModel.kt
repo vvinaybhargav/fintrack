@@ -29,6 +29,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val settings = AppSettings(application)
     private val repository = FirestoreFinanceRepository(application)
 
+    /** Currently signed-in profile name on this device, or null before one is chosen. */
+    private val _currentProfile = MutableStateFlow<String?>(null)
+    val currentProfile: StateFlow<String?> = _currentProfile.asStateFlow()
+
+    /** Convenience: the current profile's name, or "" until one is chosen. */
+    private val _nameMe = MutableStateFlow("")
+    val nameMe: StateFlow<String> = _nameMe.asStateFlow()
+
     private val _entries = MutableStateFlow<List<Entry>>(emptyList())
     val entries: StateFlow<List<Entry>> = combine(_entries, _currentProfile) { list, profile ->
         if (profile == null) emptyList()
@@ -85,13 +93,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val _refreshing = MutableStateFlow(false)
     val refreshing: StateFlow<Boolean> = _refreshing.asStateFlow()
 
-    /** Currently signed-in profile name on this device, or null before one is chosen. */
-    private val _currentProfile = MutableStateFlow<String?>(null)
-    val currentProfile: StateFlow<String?> = _currentProfile.asStateFlow()
 
-    /** Convenience: the current profile's name, or "" until one is chosen. */
-    private val _nameMe = MutableStateFlow("")
-    val nameMe: StateFlow<String> = _nameMe.asStateFlow()
 
     private var profilesEnsured = false
 

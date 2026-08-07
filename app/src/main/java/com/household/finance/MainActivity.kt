@@ -256,8 +256,8 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                 )
                 AiHubScreen(
                     entries = entries,
-                    goals = myGoals,
-                    accounts = myAccounts,
+                    goals = goals,
+                    accounts = accounts,
                     loans = loans,
                     emergencyFundAmount = emergencyFund.currentAmount,
                     defaultAccount = profiles.find { it.name == nameMe }?.defaultAccountName,

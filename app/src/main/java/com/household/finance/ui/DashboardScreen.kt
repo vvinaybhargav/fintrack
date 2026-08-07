@@ -45,6 +45,8 @@ import com.household.finance.data.INVESTMENT_CATEGORIES
 import com.household.finance.data.categoriesFor
 import com.household.finance.logic.Calculations
 import com.household.finance.logic.InsightsCoach
+import java.util.Calendar
+import java.util.Locale
 import com.household.finance.ui.theme.Cyan
 import com.household.finance.ui.theme.GlassSurface
 import com.household.finance.ui.theme.InkRaised
@@ -113,6 +115,23 @@ fun DashboardScreen(
     }
     var view by remember { mutableStateOf(DashboardView.PERSONAL) }
     var showQuickFillDialogFor by remember { mutableStateOf<Triple<String, Double, String>?>(null) }
+
+    val currentMonthExpenses = remember(entries) {
+        val cal = Calendar.getInstance()
+        val curYr = cal.get(Calendar.YEAR)
+        val curMo = cal.get(Calendar.MONTH)
+        entries.filter {
+            val eCal = Calendar.getInstance().apply { timeInMillis = it.createdAt }
+            eCal.get(Calendar.YEAR) == curYr && eCal.get(Calendar.MONTH) == curMo &&
+            it.type == com.household.finance.data.EntryType.EXPENSE
+        }
+    }
+    val categorySpends = remember(currentMonthExpenses) {
+        currentMonthExpenses.groupBy { it.category }.mapValues { (_, list) -> list.sumOf { it.amount } }
+    }
+    val categoriesWithBudgetsOrSpend = remember(budgets, categorySpends) {
+        (budgets.keys + categorySpends.keys).distinct().sorted()
+    }
 
     val showSalaryNudge = remember(entries, salaryCreditDate, salaryAmount, nameMe) {
         if (salaryCreditDate == null || salaryAmount == null || salaryAmount <= 0.0) false
@@ -217,8 +236,7 @@ fun DashboardScreen(
         if (showSalaryNudge && salaryAmount != null) {
             item {
                 GlassSurface(
-                    modifier = Modifier.fillMaxWidth().animateContentSize(),
-                    borderGradient = Brush.horizontalGradient(listOf(Positive, Cyan))
+                    modifier = Modifier.fillMaxWidth().animateContentSize()
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -288,22 +306,6 @@ fun DashboardScreen(
         }
 
         // --- Unified Budget Progress Card ---
-        val currentMonthExpenses = remember(entries) {
-            val cal = Calendar.getInstance()
-            val curYr = cal.get(Calendar.YEAR)
-            val curMo = cal.get(Calendar.MONTH)
-            entries.filter {
-                val eCal = Calendar.getInstance().apply { timeInMillis = it.createdAt }
-                eCal.get(Calendar.YEAR) == curYr && eCal.get(Calendar.MONTH) == curMo &&
-                it.type == com.household.finance.data.EntryType.EXPENSE
-            }
-        }
-        val categorySpends = remember(currentMonthExpenses) {
-            currentMonthExpenses.groupBy { it.category }.mapValues { (_, list) -> list.sumOf { it.amount } }
-        }
-        val categoriesWithBudgetsOrSpend = remember(budgets, categorySpends) {
-            (budgets.keys + categorySpends.keys).distinct().sorted()
-        }
         
         if (categoriesWithBudgetsOrSpend.isNotEmpty()) {
             item {
