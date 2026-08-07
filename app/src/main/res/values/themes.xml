@@ -5,7 +5,7 @@
         <item name="android:navigationBarColor">#0A0C12</item>
     </style>
 
-    <style name="Theme.QuickAdd" parent="android:Theme.Material.NoActionBar.Translucent">
+    <style name="Theme.QuickAdd" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowNoTitle">true</item>
