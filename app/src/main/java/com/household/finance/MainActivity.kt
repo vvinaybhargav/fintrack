@@ -168,6 +168,7 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                     onSetEmergencyFund = { viewModel.setEmergencyFund(it) },
                     onSetAccountBalance = { name, balance -> viewModel.setAccountBalance(name, balance) },
                     onSetGoalCompleted = { id, completed -> viewModel.setGoalCompleted(id, completed) },
+                    onAddGoalContribution = { id, amount -> viewModel.addGoalContribution(id, amount) },
                     onSetLoanSettled = { id, settled -> viewModel.setLoanSettled(id, settled) }
                 )
             }
@@ -223,7 +224,8 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                     onEditEntry = { viewModel.addEntry(it) },
                     onSetAccountBalance = { name, balance -> viewModel.setAccountBalance(name, balance) },
                     onAddLoan = { lender, borrower, amount, note -> viewModel.addLoan(lender, borrower, amount, note) },
-                    onDeleteLoan = { viewModel.deleteLoan(it) }
+                    onDeleteLoan = { viewModel.deleteLoan(it) },
+                    onAddGoalContribution = { id, amount -> viewModel.addGoalContribution(id, amount) }
                 )
             }
             composable("settings") {
@@ -242,6 +244,7 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                     onSwitchProfile = { manuallyUnlocked = false; viewModel.switchProfile() },
                     onSetDefaultProfile = { viewModel.setDefaultProfile(nameMe) },
                     onChangePin = { pin -> viewModel.setProfilePin(nameMe, pin) },
+                    onRenameProfile = { newName -> viewModel.renameCurrentProfile(newName) },
                     onSaveOpenAiKey = { key -> scope.launch { viewModel.settings.saveOpenAiKey(key) } },
                     onSaveFirebaseConfig = { config -> scope.launch { viewModel.settings.saveFirebaseConfig(config) } },
                     onSaveSalaryCreditDate = { day -> viewModel.setSalaryCreditDate(nameMe, day) },

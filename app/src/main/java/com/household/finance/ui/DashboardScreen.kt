@@ -66,6 +66,7 @@ fun DashboardScreen(
     onSetEmergencyFund: (Double) -> Unit,
     onSetAccountBalance: (String, Double) -> Unit,
     onSetGoalCompleted: (String, Boolean) -> Unit,
+    onAddGoalContribution: (String, Double) -> Unit,
     onSetLoanSettled: (String, Boolean) -> Unit
 ) {
     var view by remember { mutableStateOf(DashboardView.PERSONAL) }
@@ -181,17 +182,11 @@ fun DashboardScreen(
                         Text("GOALS", style = MaterialTheme.typography.labelLarge)
                         Spacer(Modifier.height(10.dp))
                         activeGoals.forEach { goal ->
-                            val progress = if (goal.targetAmount > 0) (goal.savedSoFar / goal.targetAmount).coerceIn(0.0, 1.0) else 0.0
-                            Column(Modifier.padding(bottom = 10.dp)) {
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                    Text(goal.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                                    Text(formatInr(goal.savedSoFar) + " / " + formatInr(goal.targetAmount), style = MaterialTheme.typography.bodySmall)
-                                }
-                                Spacer(Modifier.height(6.dp))
-                                LinearProgressIndicator(progress = { progress.toFloat() }, modifier = Modifier.fillMaxWidth().height(5.dp))
-                                Spacer(Modifier.height(4.dp))
-                                TextButton(onClick = { onSetGoalCompleted(goal.id, true) }) { Text("Mark as reached") }
-                            }
+                            GoalRow(
+                                goal = goal,
+                                onAddContribution = { amount -> onAddGoalContribution(goal.id, amount) },
+                                onMarkReached = { onSetGoalCompleted(goal.id, true) }
+                            )
                         }
                         if (completedGoals.isNotEmpty()) {
                             Text("REACHED", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 4.dp))
@@ -462,5 +457,57 @@ private fun BalanceEditForm(account: Account, onSave: (Double) -> Unit, onCancel
             TextButton(onClick = { onSave(input.toDoubleOrNull() ?: account.balance) }) { Text("Save") }
             TextButton(onClick = onCancel) { Text("Cancel") }
         }
+    }
+}
+
+@Composable
+private fun GoalRow(goal: Goal, onAddContribution: (Double) -> Unit, onMarkReached: () -> Unit) {
+    var adding by remember { mutableStateOf(false) }
+    val progress = if (goal.targetAmount > 0) (goal.savedSoFar / goal.targetAmount).coerceIn(0.0, 1.0) else 0.0
+
+    Column(Modifier.padding(bottom = 10.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text(goal.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            Text(formatInr(goal.savedSoFar) + " / " + formatInr(goal.targetAmount), style = MaterialTheme.typography.bodySmall)
+        }
+        Spacer(Modifier.height(6.dp))
+        LinearProgressIndicator(progress = { progress.toFloat() }, modifier = Modifier.fillMaxWidth().height(5.dp))
+        Spacer(Modifier.height(4.dp))
+        if (adding) {
+            GoalContributionForm(
+                onAdd = { amount -> onAddContribution(amount); adding = false },
+                onCancel = { adding = false }
+            )
+        } else {
+            Row {
+                TextButton(onClick = { adding = true }) { Text("Add contribution") }
+                TextButton(onClick = onMarkReached) { Text("Mark as reached") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GoalContributionForm(onAdd: (Double) -> Unit, onCancel: () -> Unit) {
+    var input by remember { mutableStateOf("") }
+    val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+        keyboardController?.show()
+    }
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        OutlinedTextField(
+            value = input,
+            onValueChange = { input = it.filter { c -> c.isDigit() } },
+            label = { Text("Amount saved") },
+            singleLine = true,
+            modifier = Modifier.width(140.dp).focusRequester(focusRequester)
+        )
+        Spacer(Modifier.width(8.dp))
+        TextButton(onClick = { input.toDoubleOrNull()?.let { if (it > 0) onAdd(it) } }) { Text("Add") }
+        TextButton(onClick = onCancel) { Text("Cancel") }
     }
 }

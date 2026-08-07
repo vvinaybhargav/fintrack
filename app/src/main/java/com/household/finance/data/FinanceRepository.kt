@@ -9,10 +9,23 @@ import com.google.firebase.firestore.FirebaseFirestoreSettings
 import com.google.firebase.firestore.PersistentCacheSettings
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.Source
+import com.google.android.gms.tasks.Task
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
+
+/** Minimal Task -> suspend bridge, avoiding a dependency on kotlinx-coroutines-play-services for just this. */
+private suspend fun <T> Task<T>.awaitTask(): T = suspendCancellableCoroutine { cont ->
+    addOnCompleteListener { task ->
+        val exception = task.exception
+        if (exception != null) {
+            if (cont.isActive) cont.resumeWith(Result.failure(exception))
+        } else {
+            if (cont.isActive) cont.resumeWith(Result.success(task.result))
+        }
+    }
+}
 
 /** Data-layer contract. Swap the implementation without touching UI code. */
 interface FinanceRepository {
@@ -29,10 +42,13 @@ interface FinanceRepository {
     fun observeAccounts(): Flow<List<Account>>
     /** Absolute overwrite — used for manual edits and explicit "X balance is Y" statements. Never touches owner. */
     suspend fun setAccountBalance(name: String, balance: Double)
-    /** Atomic +/- applied when a transaction is tagged with an account. If the account doesn't exist yet,
-     *  creates it at 0 first, tagged to [owner] - existing accounts keep whoever originally owned them. */
-    suspend fun adjustAccountBalance(name: String, delta: Double, owner: String)
+    /** Atomic +/- applied when a transaction is tagged with an account. [isNewAccount] should reflect
+     *  whether the caller's last-synced account list already has this name - determines whether this
+     *  writes an initial doc (tagged to [owner]) or increments an existing one (owner untouched).
+     *  Deliberately avoids Firestore transactions here, which don't reliably commit offline. */
+    suspend fun adjustAccountBalance(name: String, delta: Double, owner: String, isNewAccount: Boolean)
     suspend fun setGoalCompleted(id: String, completed: Boolean)
+    suspend fun addGoalContribution(id: String, amount: Double)
     fun observeLoans(): Flow<List<Loan>>
     suspend fun addLoan(loan: Loan)
     suspend fun setLoanSettled(id: String, settled: Boolean)
@@ -41,6 +57,10 @@ interface FinanceRepository {
     fun observeProfiles(): Flow<List<Profile>>
     suspend fun saveProfile(profile: Profile)
     suspend fun setProfileSalaryDate(name: String, day: Int?)
+    /** Renames a profile everywhere it's referenced (entries, goals, accounts, loans), then removes
+     *  the old profile doc. Best-effort in batches - if interrupted partway, re-running with the
+     *  same names is safe since every step only touches docs still tagged with the old name. */
+    suspend fun renameProfile(oldName: String, newName: String)
     fun isReady(): Boolean
 }
 
@@ -241,6 +261,44 @@ class FirestoreFinanceRepository(private val context: Context) : FinanceReposito
         col.document(name.trim().uppercase()).set(mapOf("salaryCreditDate" to day), SetOptions.merge())
     }
 
+    override suspend fun renameProfile(oldName: String, newName: String) {
+        val db = firestore ?: return
+        val profilesCol = profilesCollection() ?: return
+
+        // Copy the profile doc under the new name first (keep pin + salary date), then old doc is
+        // removed last - so if this whole operation is interrupted, the old name is still valid
+        // and re-running the rename picks up wherever it left off.
+        val oldDoc = profilesCol.document(oldName.trim().uppercase()).get().awaitTask()
+        val oldProfile = oldDoc.data?.let { Profile.fromMap(oldDoc.id, it) } ?: Profile(name = oldName)
+        profilesCol.document(newName.trim().uppercase()).set(oldProfile.copy(name = newName).toMap()).awaitTask()
+
+        renameFieldInCollection(db, entriesCollection(), "person", oldName, newName)
+        renameFieldInCollection(db, goalsCollection(), "owner", oldName, newName)
+        renameFieldInCollection(db, accountsCollection(), "owner", oldName, newName)
+        renameFieldInCollection(db, loansCollection(), "lender", oldName, newName)
+        renameFieldInCollection(db, loansCollection(), "borrower", oldName, newName)
+
+        profilesCol.document(oldName.trim().uppercase()).delete().awaitTask()
+    }
+
+    /** Batched find-and-replace of a single string field across every doc in a collection that has it set to [oldValue]. */
+    private suspend fun renameFieldInCollection(
+        db: FirebaseFirestore,
+        collection: com.google.firebase.firestore.CollectionReference?,
+        field: String,
+        oldValue: String,
+        newValue: String
+    ) {
+        val col = collection ?: return
+        val matches = col.whereEqualTo(field, oldValue).get().awaitTask()
+        if (matches.isEmpty) return
+        matches.documents.chunked(400).forEach { chunk ->
+            val batch = db.batch()
+            chunk.forEach { doc -> batch.update(doc.reference, field, newValue) }
+            batch.commit().awaitTask()
+        }
+    }
+
     override fun observeAccounts(): Flow<List<Account>> = callbackFlow {
         val col = accountsCollection()
         if (col == null) {
@@ -265,27 +323,33 @@ class FirestoreFinanceRepository(private val context: Context) : FinanceReposito
         )
     }
 
-    override suspend fun adjustAccountBalance(name: String, delta: Double, owner: String) {
-        val db = firestore ?: return
+    override suspend fun adjustAccountBalance(name: String, delta: Double, owner: String, isNewAccount: Boolean) {
         val col = accountsCollection() ?: return
         val docRef = col.document(accountDocId(name))
-        suspendCancellableCoroutine<Unit> { cont ->
-            db.runTransaction { txn ->
-                val snapshot = txn.get(docRef)
-                if (!snapshot.exists()) {
-                    txn.set(
-                        docRef,
-                        mapOf(
-                            "name" to name.trim().uppercase(),
-                            "balance" to delta,
-                            "owner" to owner,
-                            "updatedAt" to System.currentTimeMillis()
-                        )
-                    )
-                } else {
-                    txn.update(docRef, mapOf("balance" to FieldValue.increment(delta), "updatedAt" to System.currentTimeMillis()))
-                }
-            }.addOnCompleteListener { if (cont.isActive) cont.resumeWith(Result.success(Unit)) }
+        if (isNewAccount) {
+            // Plain set (not merge) so this also works fully offline - if two devices somehow both
+            // think this account is new at the same time, last write wins on the whole doc rather
+            // than corrupting a partial merge; a narrow, acceptable edge case for reliability.
+            docRef.set(
+                mapOf(
+                    "name" to name.trim().uppercase(),
+                    "balance" to delta,
+                    "owner" to owner,
+                    "updatedAt" to System.currentTimeMillis()
+                )
+            )
+        } else {
+            docRef.set(
+                mapOf("balance" to FieldValue.increment(delta), "updatedAt" to System.currentTimeMillis()),
+                SetOptions.merge()
+            )
         }
+    }
+
+    override suspend fun addGoalContribution(id: String, amount: Double) {
+        goalsCollection()?.document(id)?.set(
+            mapOf("savedSoFar" to FieldValue.increment(amount)),
+            SetOptions.merge()
+        )
     }
 }

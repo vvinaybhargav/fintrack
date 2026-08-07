@@ -27,6 +27,7 @@ fun SettingsScreen(
     onSwitchProfile: () -> Unit,
     onSetDefaultProfile: () -> Unit,
     onChangePin: (String) -> Unit,
+    onRenameProfile: (String) -> Unit,
     onSaveOpenAiKey: (String) -> Unit,
     onSaveFirebaseConfig: (AppSettings.FirebaseConfig) -> Unit,
     onSaveCategoryLength: (CategoryListLength) -> Unit,
@@ -35,6 +36,8 @@ fun SettingsScreen(
     var salaryDateField by remember(salaryCreditDate) { mutableStateOf(salaryCreditDate?.toString() ?: "") }
     var newPin by remember { mutableStateOf("") }
     var pinSaved by remember { mutableStateOf(false) }
+    var renameField by remember(nameMe) { mutableStateOf(nameMe) }
+    var renameError by remember { mutableStateOf<String?>(null) }
 
     // One comma-separated field: apiKey,appId,projectId,storageBucket,messagingSenderId,openAiKey
     var combinedConfig by remember(firebaseConfig, openAiKey) {
@@ -61,6 +64,29 @@ fun SettingsScreen(
                         OutlinedButton(onClick = onSetDefaultProfile) { Text("Make Default") }
                     }
                 }
+
+                Divider(Modifier.padding(vertical = 4.dp))
+
+                Text("Rename this profile", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "Updates every entry, goal, account, and IOU tagged with the old name - may take a few seconds.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                OutlinedTextField(
+                    value = renameField,
+                    onValueChange = { renameField = it; renameError = null },
+                    label = { Text("Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(0.7f)
+                )
+                Button(
+                    onClick = {
+                        if (renameField.isBlank()) { renameError = "Name can't be blank."; return@Button }
+                        onRenameProfile(renameField.trim())
+                    },
+                    enabled = renameField.isNotBlank() && renameField.trim() != nameMe
+                ) { Text("Rename") }
+                renameError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
 
                 Divider(Modifier.padding(vertical = 4.dp))
 

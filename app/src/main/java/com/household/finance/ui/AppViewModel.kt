@@ -16,6 +16,7 @@ import com.household.finance.logic.DashboardSummary
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
@@ -136,6 +137,24 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
+     * Renames the current profile everywhere (entries, goals, accounts, loans) and updates this
+     * device's local pointers (current/default/trusted) to follow the new name.
+     */
+    fun renameCurrentProfile(newName: String) {
+        val oldName = _currentProfile.value ?: return
+        val trimmed = newName.trim()
+        if (trimmed.isBlank() || trimmed == oldName) return
+        viewModelScope.launch {
+            val wasDefault = settings.defaultProfileFlow.first() == oldName
+            val wasTrusted = settings.trustedProfilesFlow.first().contains(oldName)
+            repository.renameProfile(oldName, trimmed)
+            settings.setCurrentProfile(trimmed)
+            if (wasTrusted) settings.trustProfile(trimmed)
+            if (wasDefault) settings.setDefaultProfile(trimmed)
+        }
+    }
+
+    /**
      * Adding a NEW entry (no id yet) is always attributed to whoever is currently signed in on
      * this device — never the partner's, regardless of what the caller passed in. If tagged with
      * an account, applies its signed amount to that account's balance atomically (creating the
@@ -147,7 +166,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             val toSave = if (isNew) entry.copy(person = _currentProfile.value ?: entry.person) else entry
             repository.addEntry(toSave)
             if (isNew && !toSave.accountName.isNullOrBlank()) {
-                repository.adjustAccountBalance(toSave.accountName, toSave.signedAccountAmount, _currentProfile.value ?: "")
+                val isNewAccount = _accounts.value.none { it.name.equals(toSave.accountName, ignoreCase = true) }
+                repository.adjustAccountBalance(toSave.accountName, toSave.signedAccountAmount, _currentProfile.value ?: "", isNewAccount)
             }
         }
     }
@@ -162,8 +182,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             val entry = _entries.value.find { it.id == id }
             repository.deleteEntry(id)
             if (entry != null && !entry.accountName.isNullOrBlank()) {
-                // Account already exists at this point (the entry created it), so owner is unused here.
-                repository.adjustAccountBalance(entry.accountName, -entry.signedAccountAmount, "")
+                // Account already exists at this point (the entry created it), so owner/isNewAccount are unused.
+                repository.adjustAccountBalance(entry.accountName, -entry.signedAccountAmount, "", isNewAccount = false)
             }
         }
     }
@@ -194,6 +214,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setGoalCompleted(id: String, completed: Boolean) {
         viewModelScope.launch { repository.setGoalCompleted(id, completed) }
+    }
+
+    fun addGoalContribution(id: String, amount: Double) {
+        viewModelScope.launch { repository.addGoalContribution(id, amount) }
     }
 
     fun addLoan(lender: String, borrower: String, amount: Double, note: String) {

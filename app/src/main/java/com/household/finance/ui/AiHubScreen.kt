@@ -49,7 +49,8 @@ fun AiHubScreen(
     onEditEntry: (Entry) -> Unit,
     onSetAccountBalance: (String, Double) -> Unit,
     onAddLoan: (lender: String, borrower: String, amount: Double, note: String) -> Unit,
-    onDeleteLoan: (String) -> Unit
+    onDeleteLoan: (String) -> Unit,
+    onAddGoalContribution: (String, Double) -> Unit
 ) {
     var tab by remember { mutableStateOf(AiTab.CHAT) }
 
@@ -76,7 +77,7 @@ fun AiHubScreen(
             )
             AiTab.BUDGET -> BudgetPane(entries, openAiKey)
             AiTab.ANOMALIES -> AnomaliesPane(entries, openAiKey)
-            AiTab.GOALS -> GoalsPane(goals, openAiKey, onAddGoal, onDeleteGoal)
+            AiTab.GOALS -> GoalsPane(goals, openAiKey, onAddGoal, onDeleteGoal, onAddGoalContribution)
         }
     }
 }
@@ -457,7 +458,8 @@ private fun GoalsPane(
     goals: List<Goal>,
     apiKey: String,
     onAddGoal: (Goal) -> Unit,
-    onDeleteGoal: (String) -> Unit
+    onDeleteGoal: (String) -> Unit,
+    onAddContribution: (String, Double) -> Unit
 ) {
     var description by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
@@ -497,6 +499,8 @@ private fun GoalsPane(
         if (goals.isNotEmpty()) {
             Spacer(Modifier.height(14.dp))
             goals.forEach { goal ->
+                var adding by remember(goal.id) { mutableStateOf(false) }
+                var amountInput by remember(goal.id) { mutableStateOf("") }
                 val progress = if (goal.targetAmount > 0) (goal.savedSoFar / goal.targetAmount).coerceIn(0.0, 1.0) else 0.0
                 GlassSurface(modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)) {
                     Column {
@@ -504,9 +508,33 @@ private fun GoalsPane(
                             Text(goal.title, fontWeight = FontWeight.Bold)
                             TextButton(onClick = { onDeleteGoal(goal.id) }) { Text("Remove") }
                         }
-                        Text("${formatInr(goal.monthlyContribution)}/mo for ${goal.targetMonths} months → ${formatInr(goal.targetAmount)}", style = MaterialTheme.typography.bodySmall)
+                        Text(
+                            "${formatInr(goal.savedSoFar)} / ${formatInr(goal.targetAmount)} · ${formatInr(goal.monthlyContribution)}/mo for ${goal.targetMonths} months",
+                            style = MaterialTheme.typography.bodySmall
+                        )
                         Spacer(Modifier.height(8.dp))
                         LinearProgressIndicator(progress = { progress.toFloat() }, modifier = Modifier.fillMaxWidth().height(6.dp))
+                        Spacer(Modifier.height(8.dp))
+                        if (adding) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                OutlinedTextField(
+                                    value = amountInput,
+                                    onValueChange = { amountInput = it.filter { c -> c.isDigit() } },
+                                    label = { Text("Amount saved") },
+                                    singleLine = true,
+                                    modifier = Modifier.width(140.dp)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                TextButton(onClick = {
+                                    amountInput.toDoubleOrNull()?.let { if (it > 0) onAddContribution(goal.id, it) }
+                                    amountInput = ""
+                                    adding = false
+                                }) { Text("Add") }
+                                TextButton(onClick = { adding = false }) { Text("Cancel") }
+                            }
+                        } else {
+                            TextButton(onClick = { adding = true }) { Text("Add contribution") }
+                        }
                     }
                 }
             }
