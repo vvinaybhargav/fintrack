@@ -25,10 +25,14 @@ data class ChatResult(
     val goalDraft: Goal? = null,
     val loanDraft: Loan? = null,
     val deleteTarget: DeleteTarget? = null,
-    val editTarget: EditTarget? = null
+    val editTarget: EditTarget? = null,
+    val transferDraft: TransferDraft? = null
 )
 
 data class BalanceUpdate(val account: String, val balance: Double)
+
+/** Moves money between two of the household's own accounts - not a new expense, just a balance move. */
+data class TransferDraft(val fromAccount: String, val toAccount: String, val amount: Double, val note: String)
 
 /** kind is one of "ENTRY", "GOAL", "LOAN". Requires explicit user confirmation before applying - never auto-applied. */
 data class DeleteTarget(val kind: String, val id: String, val label: String)
@@ -107,7 +111,8 @@ object FinanceAi {
         categories: List<String>,
         nameMe: String,
         nameWife: String,
-        apiKey: String
+        apiKey: String,
+        defaultAccount: String? = null
     ): ChatResult {
         val accountsDigest = if (accounts.isEmpty()) "No accounts tracked yet." else
             accounts.joinToString(", ") { "${it.name}: ₹${it.balance.toInt()}" }
@@ -159,7 +164,15 @@ object FinanceAi {
             EDIT_ENTRY:{"id":"the matching id","type":"INCOME|EXPENSE|SAVINGS","bucket":"JOINT|PERSONAL","category":"...","amount":number,"frequency":"MONTHLY|ANNUAL","note":"...","label":"short human description of the change"}
             If nothing matches clearly, answer normally instead explaining you couldn't find it - don't guess.
 
-            For any of these six cases: no prose, no markdown fences, just that one line. DELETE and EDIT_ENTRY
+            If the user's latest message asks to TRANSFER or MOVE money to an account (e.g. "transfer 5000 to
+            kotak", "transfer for insurance to kotak" - if no amount is stated but a category is referenced,
+            use that category's amount from the entries below), reply with ONLY a single line. This always
+            moves money FROM the user's default account (already known to the app, never ask which account
+            it's from) TO the account named:
+            TRANSFER:{"amount":number,"toAccount":"bank/account name","note":"short string"}
+            ${if (defaultAccount.isNullOrBlank()) "No default account is set yet - if asked to transfer, answer normally telling the user to set one in Settings first, instead of replying TRANSFER." else "Default account: $defaultAccount"}
+
+            For any of these seven cases: no prose, no markdown fences, just that one line. DELETE and EDIT_ENTRY
             will always be shown to the user for confirmation before anything actually happens - you never
             need to ask for confirmation yourself, just extract the request.
 
@@ -260,6 +273,19 @@ object FinanceAi {
                 )
             }.getOrNull()
             if (parsed != null) return ChatResult(null, null, null, null, parsed)
+        }
+
+        if (raw.startsWith("TRANSFER:") && !defaultAccount.isNullOrBlank()) {
+            val jsonText = raw.removePrefix("TRANSFER:").trim()
+                .removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
+            val parsed = runCatching {
+                val json = JSONObject(jsonText)
+                val amount = json.optDouble("amount", Double.NaN)
+                val toAccount = json.optString("toAccount", "").trim()
+                if (amount.isNaN() || amount <= 0 || toAccount.isBlank()) return@runCatching null
+                TransferDraft(fromAccount = defaultAccount, toAccount = toAccount, amount = amount, note = json.optString("note", question))
+            }.getOrNull()
+            if (parsed != null) return ChatResult(null, null, null, null, null, null, null, parsed)
         }
 
         if (raw.startsWith("DELETE:")) {

@@ -33,6 +33,7 @@ fun SettingsScreen(
     categoryLength: CategoryListLength,
     salaryCreditDate: Int?,
     salaryAmount: Double?,
+    defaultAccountName: String?,
     entries: List<Entry>,
     accounts: List<Account>,
     goals: List<Goal>,
@@ -47,7 +48,8 @@ fun SettingsScreen(
     onSaveFirebaseConfig: (AppSettings.FirebaseConfig) -> Unit,
     onSaveCategoryLength: (CategoryListLength) -> Unit,
     onSaveSalaryCreditDate: (Int?) -> Unit,
-    onSaveSalaryAmount: (Double) -> Unit
+    onSaveSalaryAmount: (Double) -> Unit,
+    onSetDefaultAccount: (String?) -> Unit
 ) {
     val context = LocalContext.current
     var resetPinConfirming by remember { mutableStateOf(false) }
@@ -59,6 +61,7 @@ fun SettingsScreen(
     var salaryDateField by remember(salaryCreditDate) { mutableStateOf(salaryCreditDate?.toString() ?: "") }
     var salaryAmountField by remember(salaryAmount) { mutableStateOf(salaryAmount?.takeIf { it > 0 }?.toInt()?.toString() ?: "") }
     var salarySaved by remember { mutableStateOf(false) }
+    var defaultAccountExpanded by remember { mutableStateOf(false) }
     var newPin by remember { mutableStateOf("") }
     var pinSaved by remember { mutableStateOf(false) }
     var renameField by remember(nameMe) { mutableStateOf(nameMe) }
@@ -188,6 +191,26 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth(0.5f)
                 )
                 Button(onClick = { onSaveSalaryCreditDate(salaryDateField.toIntOrNull()) }) { Text("Save Salary Date") }
+            }
+        }
+
+        if (accounts.isNotEmpty()) {
+            GlassSurface(modifier = Modifier.fillMaxWidth()) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("DEFAULT ACCOUNT", style = MaterialTheme.typography.labelLarge)
+                    Text(
+                        "Used as the \"from\" account when you say \"transfer 5000 to kotak\" in AI chat — money always moves out of this one unless you say otherwise.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    ExposedDropdownMenuBoxCompat(
+                        expanded = defaultAccountExpanded,
+                        onExpandedChange = { defaultAccountExpanded = it },
+                        selected = defaultAccountName ?: "None set",
+                        label = "Default account",
+                        options = accounts.map { it.name },
+                        onSelect = { onSetDefaultAccount(it) }
+                    )
+                }
             }
         }
 

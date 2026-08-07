@@ -235,10 +235,13 @@ data class Profile(
     val pin: String = "",
     /** Day of month (1-31) this profile's salary is credited, or null if not set. */
     val salaryCreditDate: Int? = null,
+    /** This profile's default account - the "from" side of a chat-based transfer when none is named. */
+    val defaultAccountName: String? = null,
     val updatedAt: Long = System.currentTimeMillis()
 ) {
     fun toMap(): Map<String, Any?> = mapOf(
-        "name" to name, "pin" to pin, "salaryCreditDate" to salaryCreditDate, "updatedAt" to updatedAt
+        "name" to name, "pin" to pin, "salaryCreditDate" to salaryCreditDate,
+        "defaultAccountName" to defaultAccountName, "updatedAt" to updatedAt
     )
 
     companion object {
@@ -246,6 +249,7 @@ data class Profile(
             name = map["name"] as? String ?: id,
             pin = map["pin"] as? String ?: "",
             salaryCreditDate = (map["salaryCreditDate"] as? Number)?.toInt(),
+            defaultAccountName = map["defaultAccountName"] as? String,
             updatedAt = (map["updatedAt"] as? Number)?.toLong() ?: 0L
         )
     }

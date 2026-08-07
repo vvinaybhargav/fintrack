@@ -38,6 +38,7 @@ fun AiHubScreen(
     accounts: List<Account>,
     loans: List<Loan>,
     emergencyFundAmount: Double,
+    defaultAccount: String?,
     openAiKey: String,
     categories: List<String>,
     nameMe: String,
@@ -50,7 +51,8 @@ fun AiHubScreen(
     onSetAccountBalance: (String, Double) -> Unit,
     onAddLoan: (lender: String, borrower: String, amount: Double, note: String, accountName: String?) -> Unit,
     onDeleteLoan: (String) -> Unit,
-    onAddGoalContribution: (String, Double) -> Unit
+    onAddGoalContribution: (String, Double) -> Unit,
+    onTransfer: (fromAccount: String, toAccount: String, amount: Double, note: String) -> Unit
 ) {
     var tab by remember { mutableStateOf(AiTab.CHAT) }
 
@@ -71,9 +73,9 @@ fun AiHubScreen(
 
         when (tab) {
             AiTab.CHAT -> ChatPane(
-                entries, accounts, goals, loans, emergencyFundAmount, categories, nameMe, nameWife,
+                entries, accounts, goals, loans, emergencyFundAmount, defaultAccount, categories, nameMe, nameWife,
                 openAiKey, onAddEntry, onDeleteEntry, onEditEntry, onSetAccountBalance, onAddGoal,
-                onDeleteGoal, onAddLoan, onDeleteLoan
+                onDeleteGoal, onAddLoan, onDeleteLoan, onTransfer
             )
             AiTab.BUDGET -> BudgetPane(entries, openAiKey)
             AiTab.ANOMALIES -> AnomaliesPane(entries, openAiKey)
@@ -103,6 +105,7 @@ private sealed class ChatBubble {
     data class AppliedBalance(val update: BalanceUpdate) : ChatBubble()
     data class AddedGoal(val goal: Goal) : ChatBubble()
     data class AddedLoan(val loan: Loan) : ChatBubble()
+    data class AppliedTransfer(val transfer: com.household.finance.logic.TransferDraft) : ChatBubble()
     data class PendingDelete(val target: DeleteTarget) : ChatBubble()
     data class DidDelete(val label: String) : ChatBubble()
     data class Discarded(val label: String) : ChatBubble()
@@ -117,6 +120,7 @@ private fun ChatPane(
     goals: List<Goal>,
     loans: List<Loan>,
     emergencyFundAmount: Double,
+    defaultAccount: String?,
     categories: List<String>,
     nameMe: String,
     nameWife: String,
@@ -128,7 +132,8 @@ private fun ChatPane(
     onAddGoal: (Goal) -> Unit,
     onDeleteGoal: (String) -> Unit,
     onAddLoan: (lender: String, borrower: String, amount: Double, note: String, accountName: String?) -> Unit,
-    onDeleteLoan: (String) -> Unit
+    onDeleteLoan: (String) -> Unit,
+    onTransfer: (fromAccount: String, toAccount: String, amount: Double, note: String) -> Unit
 ) {
     var input by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
@@ -146,7 +151,7 @@ private fun ChatPane(
         error = null
         Thread {
             val result = runCatching {
-                FinanceAi.chat(question, history.toList(), entries, accounts, goals, loans, emergencyFundAmount, categories, nameMe, nameWife, apiKey)
+                FinanceAi.chat(question, history.toList(), entries, accounts, goals, loans, emergencyFundAmount, categories, nameMe, nameWife, apiKey, defaultAccount)
             }
             result.onSuccess { r ->
                 when {
@@ -169,6 +174,11 @@ private fun ChatPane(
                         onAddLoan(r.loanDraft.lender, r.loanDraft.borrower, r.loanDraft.amount, r.loanDraft.note, r.loanDraft.accountName)
                         bubbles.add(ChatBubble.AddedLoan(r.loanDraft))
                         history.add(ChatMessage("assistant", "IOU recorded."))
+                    }
+                    r.transferDraft != null -> {
+                        onTransfer(r.transferDraft.fromAccount, r.transferDraft.toAccount, r.transferDraft.amount, r.transferDraft.note)
+                        bubbles.add(ChatBubble.AppliedTransfer(r.transferDraft))
+                        history.add(ChatMessage("assistant", "Transferred."))
                     }
                     r.deleteTarget != null -> {
                         bubbles.add(ChatBubble.PendingDelete(r.deleteTarget))
@@ -222,7 +232,8 @@ private fun ChatPane(
                     "Type \"22k emi\" and it's logged instantly under your name as Personal — say \"joint\" if it's shared. " +
                         "\"22k emi from icici\" also updates that account's balance. \"sbi balance is 50k\" sets a balance directly. " +
                         "\"add goal to buy a car in 2027 jan with down payment 100000\" plans a goal. " +
-                        "\"gave ${nameWife} 2k\" records an IOU. \"delete the car goal\" or \"change the EMI amount to 25k\" " +
+                        "\"gave ${nameWife} 2k\" records an IOU. \"transfer 5000 to kotak\" moves money from your default " +
+                        "account (set in Settings) to the one named. \"delete the car goal\" or \"change the EMI amount to 25k\" " +
                         "will ask you to confirm before doing anything. Or just ask a question — I can see all your entries, goals, and IOUs.",
                     style = MaterialTheme.typography.bodySmall
                 )
@@ -280,6 +291,22 @@ private fun ChatPane(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text("✅", modifier = Modifier.padding(end = 8.dp))
                                 Text("${bubble.loan.borrower} owes ${bubble.loan.lender} ${formatInr(bubble.loan.amount)}", color = Positive)
+                            }
+                        }
+                    }
+                    is ChatBubble.AppliedTransfer -> {
+                        GlassSurface(modifier = Modifier.fillMaxWidth()) {
+                            Column {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("✅", modifier = Modifier.padding(end = 8.dp))
+                                    Text(
+                                        "Transferred ${formatInr(bubble.transfer.amount)}: ${bubble.transfer.fromAccount} → ${bubble.transfer.toAccount}",
+                                        color = Positive
+                                    )
+                                }
+                                if (bubble.transfer.note.isNotBlank()) {
+                                    Text(bubble.transfer.note, style = MaterialTheme.typography.bodySmall)
+                                }
                             }
                         }
                     }

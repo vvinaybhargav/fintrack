@@ -166,6 +166,21 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { repository.setSalaryIncome(name, amount) }
     }
 
+    fun setDefaultAccount(accountName: String?) {
+        val name = _currentProfile.value ?: return
+        viewModelScope.launch { repository.setProfileDefaultAccount(name, accountName) }
+    }
+
+    /** Moves money between two of the household's own accounts - debits [fromAccount], credits [toAccount]. */
+    fun transferBetweenAccounts(fromAccount: String, toAccount: String, amount: Double, note: String) {
+        viewModelScope.launch {
+            val editedBy = _currentProfile.value ?: ""
+            val isNewTarget = _accounts.value.none { it.name.equals(toAccount, ignoreCase = true) }
+            repository.adjustAccountBalance(fromAccount, -amount, editedBy, isNewAccount = false, editedBy = editedBy)
+            repository.adjustAccountBalance(toAccount, amount, editedBy, isNewTarget, editedBy)
+        }
+    }
+
     /**
      * Renames the current profile everywhere (entries, goals, accounts, loans) and updates this
      * device's local pointers (current/default/trusted) to follow the new name.

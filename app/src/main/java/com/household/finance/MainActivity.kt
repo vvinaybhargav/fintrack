@@ -238,6 +238,7 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                     accounts = myAccounts,
                     loans = loans,
                     emergencyFundAmount = emergencyFund.currentAmount,
+                    defaultAccount = profiles.find { it.name == nameMe }?.defaultAccountName,
                     openAiKey = openAiKey,
                     categories = com.household.finance.data.categoriesFor(categoryLength),
                     nameMe = nameMe,
@@ -250,7 +251,8 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                     onSetAccountBalance = { name, balance -> viewModel.setAccountBalance(name, balance) },
                     onAddLoan = { lender, borrower, amount, note, accountName -> viewModel.addLoan(lender, borrower, amount, note, accountName) },
                     onDeleteLoan = { viewModel.deleteLoan(it) },
-                    onAddGoalContribution = { id, amount -> viewModel.addGoalContribution(id, amount) }
+                    onAddGoalContribution = { id, amount -> viewModel.addGoalContribution(id, amount) },
+                    onTransfer = { from, to, amount, note -> viewModel.transferBetweenAccounts(from, to, amount, note) }
                 )
             }
             composable("settings") {
@@ -259,6 +261,7 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                 )
                 val salaryCreditDate = profiles.find { it.name == nameMe }?.salaryCreditDate
                 val salaryAmount = entries.find { it.id == com.household.finance.data.salaryEntryId(nameMe) }?.amount
+                val defaultAccountName = profiles.find { it.name == nameMe }?.defaultAccountName
                 SettingsScreen(
                     nameMe = nameMe,
                     nameWife = nameWife,
@@ -269,6 +272,7 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                     categoryLength = categoryLength,
                     salaryCreditDate = salaryCreditDate,
                     salaryAmount = salaryAmount,
+                    defaultAccountName = defaultAccountName,
                     entries = entries,
                     accounts = accounts,
                     goals = goals,
@@ -283,6 +287,7 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                     onSaveFirebaseConfig = { config -> scope.launch { viewModel.settings.saveFirebaseConfig(config) } },
                     onSaveSalaryCreditDate = { day -> viewModel.setSalaryCreditDate(nameMe, day) },
                     onSaveSalaryAmount = { amount -> viewModel.setSalaryAmount(amount) },
+                    onSetDefaultAccount = { account -> viewModel.setDefaultAccount(account) },
                     onSaveCategoryLength = { length -> scope.launch { viewModel.settings.saveCategoryLength(length) } }
                 )
             }
