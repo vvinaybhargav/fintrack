@@ -102,10 +102,15 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
     val defaultProfile by viewModel.settings.defaultProfileFlow.collectAsStateWithLifecycle(initialValue = null)
     val scope = rememberCoroutineScope()
 
+    // Accounts/goals scoped to whoever's signed in - blank owner means "predates ownership tracking",
+    // shown to everyone as a safe default.
+    val myAccounts = accounts.filter { it.owner.isBlank() || it.owner == nameMe }
+    val myGoals = goals.filter { it.owner.isBlank() || it.owner == nameMe }
+
     var editingEntry by remember { mutableStateOf<Entry?>(null) }
 
-    LaunchedEffect(summary.surplus, accounts) {
-        WidgetUpdater.update(context, summary.surplus, accounts)
+    LaunchedEffect(summary.surplus, myAccounts) {
+        WidgetUpdater.update(context, summary.surplus, myAccounts)
     }
 
     Scaffold(
@@ -141,8 +146,8 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                 )
                 DashboardScreen(
                     entries = entries,
-                    accounts = accounts,
-                    goals = goals,
+                    accounts = myAccounts,
+                    goals = myGoals,
                     loans = loans,
                     categoryLength = categoryLength,
                     emergencyFundAmount = emergencyFund.currentAmount,
@@ -171,6 +176,7 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                 val refreshing by viewModel.refreshing.collectAsStateWithLifecycle()
                 EntriesScreen(
                     entries = entries,
+                    nameMe = nameMe,
                     refreshing = refreshing,
                     onRefresh = { viewModel.refreshEntries() },
                     onDelete = { viewModel.deleteEntry(it) },
@@ -189,8 +195,8 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                 )
                 AiHubScreen(
                     entries = entries,
-                    goals = goals,
-                    accounts = accounts,
+                    goals = myGoals,
+                    accounts = myAccounts,
                     loans = loans,
                     emergencyFundAmount = emergencyFund.currentAmount,
                     openAiKey = openAiKey,
@@ -208,7 +214,7 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                 val categoryLength by viewModel.settings.categoryLengthFlow.collectAsStateWithLifecycle(
                     initialValue = com.household.finance.data.CategoryListLength.MEDIUM
                 )
-                val salaryCreditDate by viewModel.settings.salaryCreditDateFlow.collectAsStateWithLifecycle(initialValue = null)
+                val salaryCreditDate = profiles.find { it.name == nameMe }?.salaryCreditDate
                 SettingsScreen(
                     nameMe = nameMe,
                     isDefaultProfile = defaultProfile == nameMe,
@@ -222,7 +228,7 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                     onChangePin = { pin -> viewModel.setProfilePin(nameMe, pin) },
                     onSaveOpenAiKey = { key -> scope.launch { viewModel.settings.saveOpenAiKey(key) } },
                     onSaveFirebaseConfig = { config -> scope.launch { viewModel.settings.saveFirebaseConfig(config) } },
-                    onSaveSalaryCreditDate = { day -> scope.launch { viewModel.settings.saveSalaryCreditDate(day) } },
+                    onSaveSalaryCreditDate = { day -> viewModel.setSalaryCreditDate(nameMe, day) },
                     onSaveCategoryLength = { length -> scope.launch { viewModel.settings.saveCategoryLength(length) } }
                 )
             }

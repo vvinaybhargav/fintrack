@@ -131,6 +131,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { repository.saveProfile(Profile(name = name, pin = pin)) }
     }
 
+    fun setSalaryCreditDate(name: String, day: Int?) {
+        viewModelScope.launch { repository.setProfileSalaryDate(name, day) }
+    }
+
     /**
      * Adding a NEW entry (no id yet) is always attributed to whoever is currently signed in on
      * this device — never the partner's, regardless of what the caller passed in. If tagged with
@@ -143,7 +147,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             val toSave = if (isNew) entry.copy(person = _currentProfile.value ?: entry.person) else entry
             repository.addEntry(toSave)
             if (isNew && !toSave.accountName.isNullOrBlank()) {
-                repository.adjustAccountBalance(toSave.accountName, toSave.signedAccountAmount)
+                repository.adjustAccountBalance(toSave.accountName, toSave.signedAccountAmount, _currentProfile.value ?: "")
             }
         }
     }
@@ -158,7 +162,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             val entry = _entries.value.find { it.id == id }
             repository.deleteEntry(id)
             if (entry != null && !entry.accountName.isNullOrBlank()) {
-                repository.adjustAccountBalance(entry.accountName, -entry.signedAccountAmount)
+                // Account already exists at this point (the entry created it), so owner is unused here.
+                repository.adjustAccountBalance(entry.accountName, -entry.signedAccountAmount, "")
             }
         }
     }
@@ -175,8 +180,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { repository.setEmergencyFund(amount) }
     }
 
+    /** New goals are always owned by whoever's signed in on this device. */
     fun addGoal(goal: Goal) {
-        viewModelScope.launch { repository.addGoal(goal) }
+        viewModelScope.launch {
+            val toSave = if (goal.id.isBlank()) goal.copy(owner = _currentProfile.value ?: goal.owner) else goal
+            repository.addGoal(toSave)
+        }
     }
 
     fun deleteGoal(id: String) {

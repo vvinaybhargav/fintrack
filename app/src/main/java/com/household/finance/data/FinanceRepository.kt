@@ -27,10 +27,11 @@ interface FinanceRepository {
     suspend fun addGoal(goal: Goal)
     suspend fun deleteGoal(id: String)
     fun observeAccounts(): Flow<List<Account>>
-    /** Absolute overwrite — used for manual edits and explicit "X balance is Y" statements. */
+    /** Absolute overwrite — used for manual edits and explicit "X balance is Y" statements. Never touches owner. */
     suspend fun setAccountBalance(name: String, balance: Double)
-    /** Atomic +/- applied when a transaction is tagged with an account (creates the account at 0 first if new). */
-    suspend fun adjustAccountBalance(name: String, delta: Double)
+    /** Atomic +/- applied when a transaction is tagged with an account. If the account doesn't exist yet,
+     *  creates it at 0 first, tagged to [owner] - existing accounts keep whoever originally owned them. */
+    suspend fun adjustAccountBalance(name: String, delta: Double, owner: String)
     suspend fun setGoalCompleted(id: String, completed: Boolean)
     fun observeLoans(): Flow<List<Loan>>
     suspend fun addLoan(loan: Loan)
@@ -38,6 +39,7 @@ interface FinanceRepository {
     /** Shared across both phones so either can switch to either profile with the same PIN. */
     fun observeProfiles(): Flow<List<Profile>>
     suspend fun saveProfile(profile: Profile)
+    suspend fun setProfileSalaryDate(name: String, day: Int?)
     fun isReady(): Boolean
 }
 
@@ -229,6 +231,11 @@ class FirestoreFinanceRepository(private val context: Context) : FinanceReposito
         col.document(profile.name.trim().uppercase()).set(profile.toMap(), SetOptions.merge())
     }
 
+    override suspend fun setProfileSalaryDate(name: String, day: Int?) {
+        val col = profilesCollection() ?: return
+        col.document(name.trim().uppercase()).set(mapOf("salaryCreditDate" to day), SetOptions.merge())
+    }
+
     override fun observeAccounts(): Flow<List<Account>> = callbackFlow {
         val col = accountsCollection()
         if (col == null) {
@@ -248,19 +255,32 @@ class FirestoreFinanceRepository(private val context: Context) : FinanceReposito
     override suspend fun setAccountBalance(name: String, balance: Double) {
         val col = accountsCollection() ?: return
         col.document(accountDocId(name)).set(
-            mapOf("name" to name.trim().uppercase(), "balance" to balance, "updatedAt" to System.currentTimeMillis())
+            mapOf("name" to name.trim().uppercase(), "balance" to balance, "updatedAt" to System.currentTimeMillis()),
+            SetOptions.merge()
         )
     }
 
-    override suspend fun adjustAccountBalance(name: String, delta: Double) {
+    override suspend fun adjustAccountBalance(name: String, delta: Double, owner: String) {
+        val db = firestore ?: return
         val col = accountsCollection() ?: return
-        col.document(accountDocId(name)).set(
-            mapOf(
-                "name" to name.trim().uppercase(),
-                "balance" to FieldValue.increment(delta),
-                "updatedAt" to System.currentTimeMillis()
-            ),
-            SetOptions.merge()
-        )
+        val docRef = col.document(accountDocId(name))
+        suspendCancellableCoroutine<Unit> { cont ->
+            db.runTransaction { txn ->
+                val snapshot = txn.get(docRef)
+                if (!snapshot.exists()) {
+                    txn.set(
+                        docRef,
+                        mapOf(
+                            "name" to name.trim().uppercase(),
+                            "balance" to delta,
+                            "owner" to owner,
+                            "updatedAt" to System.currentTimeMillis()
+                        )
+                    )
+                } else {
+                    txn.update(docRef, mapOf("balance" to FieldValue.increment(delta), "updatedAt" to System.currentTimeMillis()))
+                }
+            }.addOnCompleteListener { if (cont.isActive) cont.resumeWith(Result.success(Unit)) }
+        }
     }
 }

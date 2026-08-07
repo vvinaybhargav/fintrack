@@ -2,7 +2,6 @@ package com.household.finance.data
 
 import android.content.Context
 import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -31,7 +30,6 @@ class AppSettings(private val context: Context) {
         val FB_MESSAGING_SENDER_ID = stringPreferencesKey("fb_messaging_sender_id")
         val OPENAI_KEY = stringPreferencesKey("openai_key")
         val CATEGORY_LENGTH = stringPreferencesKey("category_length")
-        val SALARY_CREDIT_DATE = intPreferencesKey("salary_credit_date")
     }
 
     /** The profile currently signed in on this device, or null if none has been chosen yet. */
@@ -45,9 +43,6 @@ class AppSettings(private val context: Context) {
     val categoryLengthFlow: Flow<CategoryListLength> = context.dataStore.data.map {
         runCatching { CategoryListLength.valueOf(it[Keys.CATEGORY_LENGTH] ?: "MEDIUM") }.getOrDefault(CategoryListLength.MEDIUM)
     }
-    /** Day of month (1-31) this profile's salary is credited, or null if not set. */
-    val salaryCreditDateFlow: Flow<Int?> = context.dataStore.data.map { it[Keys.SALARY_CREDIT_DATE] }
-
     suspend fun setCurrentProfile(name: String) {
         context.dataStore.edit { it[Keys.CURRENT_PROFILE] = name }
     }
@@ -70,12 +65,6 @@ class AppSettings(private val context: Context) {
 
     suspend fun saveCategoryLength(length: CategoryListLength) {
         context.dataStore.edit { it[Keys.CATEGORY_LENGTH] = length.name }
-    }
-
-    suspend fun saveSalaryCreditDate(day: Int?) {
-        context.dataStore.edit {
-            if (day == null) it.remove(Keys.SALARY_CREDIT_DATE) else it[Keys.SALARY_CREDIT_DATE] = day.coerceIn(1, 31)
-        }
     }
 
     data class FirebaseConfig(

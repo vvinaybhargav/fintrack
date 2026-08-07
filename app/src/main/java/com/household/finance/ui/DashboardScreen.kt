@@ -126,7 +126,7 @@ fun DashboardScreen(
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 HeroStat(
-                    label = "SURPLUS",
+                    label = "LEFT OVER",
                     value = formatInr(summary.surplus),
                     accent = if (summary.surplus >= 0) Positive else Warning,
                     modifier = Modifier.weight(1.3f)

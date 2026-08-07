@@ -64,14 +64,17 @@ data class Entry(
 data class Account(
     val name: String = "",
     val balance: Double = 0.0,
+    /** Profile that owns this account; blank means "existed before ownership was tracked" - visible to everyone. */
+    val owner: String = "",
     val updatedAt: Long = System.currentTimeMillis()
 ) {
-    fun toMap(): Map<String, Any?> = mapOf("name" to name, "balance" to balance, "updatedAt" to updatedAt)
+    fun toMap(): Map<String, Any?> = mapOf("name" to name, "balance" to balance, "owner" to owner, "updatedAt" to updatedAt)
 
     companion object {
         fun fromMap(id: String, map: Map<String, Any?>): Account = Account(
             name = map["name"] as? String ?: id,
             balance = (map["balance"] as? Number)?.toDouble() ?: 0.0,
+            owner = map["owner"] as? String ?: "",
             updatedAt = (map["updatedAt"] as? Number)?.toLong() ?: 0L
         )
     }
@@ -89,6 +92,8 @@ data class Goal(
     val monthlyContribution: Double = 0.0,
     val savedSoFar: Double = 0.0,
     val completed: Boolean = false,
+    /** Profile that created this goal; blank means "existed before ownership was tracked" - visible to everyone. */
+    val owner: String = "",
     val createdAt: Long = System.currentTimeMillis()
 ) {
     fun toMap(): Map<String, Any?> = mapOf(
@@ -98,6 +103,7 @@ data class Goal(
         "monthlyContribution" to monthlyContribution,
         "savedSoFar" to savedSoFar,
         "completed" to completed,
+        "owner" to owner,
         "createdAt" to createdAt
     )
 
@@ -110,6 +116,7 @@ data class Goal(
             monthlyContribution = (map["monthlyContribution"] as? Number)?.toDouble() ?: 0.0,
             savedSoFar = (map["savedSoFar"] as? Number)?.toDouble() ?: 0.0,
             completed = map["completed"] as? Boolean ?: false,
+            owner = map["owner"] as? String ?: "",
             createdAt = (map["createdAt"] as? Number)?.toLong() ?: 0L
         )
     }
@@ -151,14 +158,19 @@ data class Loan(
 data class Profile(
     val name: String = "",
     val pin: String = "",
+    /** Day of month (1-31) this profile's salary is credited, or null if not set. */
+    val salaryCreditDate: Int? = null,
     val updatedAt: Long = System.currentTimeMillis()
 ) {
-    fun toMap(): Map<String, Any?> = mapOf("name" to name, "pin" to pin, "updatedAt" to updatedAt)
+    fun toMap(): Map<String, Any?> = mapOf(
+        "name" to name, "pin" to pin, "salaryCreditDate" to salaryCreditDate, "updatedAt" to updatedAt
+    )
 
     companion object {
         fun fromMap(id: String, map: Map<String, Any?>): Profile = Profile(
             name = map["name"] as? String ?: id,
             pin = map["pin"] as? String ?: "",
+            salaryCreditDate = (map["salaryCreditDate"] as? Number)?.toInt(),
             updatedAt = (map["updatedAt"] as? Number)?.toLong() ?: 0L
         )
     }
