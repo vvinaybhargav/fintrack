@@ -272,13 +272,21 @@ fun DashboardScreen(
             }
         }
 
-        // --- Glanceable hero: the numbers that matter for the selected view, big, at the top ---
         item {
+            val hasIncome = summary.totalIncome > 0.0
+            val leftoverLabel = if (hasIncome) "LEFT OVER" else "EXPECTED OUTFLOW"
+            val leftoverVal = if (hasIncome) formatInr(summary.surplus) else formatInr(Math.abs(summary.surplus))
+            val leftoverAccent = if (hasIncome) {
+                if (summary.surplus >= 0) Positive else Warning
+            } else {
+                Cyan
+            }
+
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 HeroStat(
-                    label = "LEFT OVER",
-                    value = formatInr(summary.surplus),
-                    accent = if (summary.surplus >= 0) Positive else Warning,
+                    label = leftoverLabel,
+                    value = leftoverVal,
+                    accent = leftoverAccent,
                     modifier = Modifier.weight(1.3f),
                     gradient = true
                 )
@@ -488,7 +496,7 @@ fun DashboardScreen(
                         val currentSurplus = summary.surplus
                         val totalNeededMonthly = commitmentsChecklist.filter { it.template.frequency == com.household.finance.data.Frequency.ANNUAL }.sumOf { it.monthlyAmount }
                         val coachRecommendation = when {
-                            sinkingFundBalance < 30000 -> "Vinnu, your Sinking Fund is low. Since you have yearly premiums due later this year, try to set aside at least ${formatInr(totalNeededMonthly)} monthly to avoid cash crunch."
+                            sinkingFundBalance < 30000 -> "$nameMe, your Sinking Fund is low. Since you have yearly premiums due later this year, try to set aside at least ${formatInr(totalNeededMonthly)} monthly to avoid cash crunch."
                             currentSurplus > 10000 -> "You have a healthy surplus of ${formatInr(currentSurplus)} this month! Consider transferring an extra ₹5,000 to your Sinking Fund or making a prepayment on your EMI."
                             else -> "Your Sinking Fund is on track. Keep transferring the monthly shares of your annual premiums."
                         }
@@ -1396,7 +1404,7 @@ private fun CommitmentRow(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column {
+        Column(Modifier.weight(1f)) {
             Text(item.template.note.ifBlank { item.template.category }, fontWeight = FontWeight.SemiBold)
             val subText = if (isSinking) {
                 "${formatInr(item.monthlyAmount)}/mo (sinking to ${item.template.toAccountName})"

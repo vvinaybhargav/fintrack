@@ -62,13 +62,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val _goals = MutableStateFlow<List<Goal>>(emptyList())
     val goals: StateFlow<List<Goal>> = combine(_goals, _currentProfile) { list, profile ->
         if (profile == null) emptyList()
-        else list.filter { it.owner.isBlank() || it.owner.equals(profile, ignoreCase = true) }
+        else list.filter { it.owner.equals(profile, ignoreCase = true) || (it.owner.isBlank() && it.lastEditedBy.equals(profile, ignoreCase = true)) }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _accounts = MutableStateFlow<List<Account>>(emptyList())
     val accounts: StateFlow<List<Account>> = combine(_accounts, _currentProfile) { list, profile ->
         if (profile == null) emptyList()
-        else list.filter { it.owner.isBlank() || it.owner.equals(profile, ignoreCase = true) }
+        else list.filter {
+            val name = it.name.trim().uppercase()
+            val isJoint = name == "JOINT ACCOUNT" || name == "SINKING FUND"
+            isJoint || it.owner.equals(profile, ignoreCase = true) || (it.owner.isBlank() && it.lastEditedBy.equals(profile, ignoreCase = true))
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _loans = MutableStateFlow<List<Loan>>(emptyList())
@@ -77,13 +81,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val _bills = MutableStateFlow<List<com.household.finance.data.Bill>>(emptyList())
     val bills: StateFlow<List<com.household.finance.data.Bill>> = combine(_bills, _currentProfile) { list, profile ->
         if (profile == null) emptyList()
-        else list.filter { it.owner.isBlank() || it.owner.equals(profile, ignoreCase = true) }
+        else list.filter { it.owner.equals(profile, ignoreCase = true) || (it.owner.isBlank() && it.lastEditedBy.equals(profile, ignoreCase = true)) }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _activeLoans = MutableStateFlow<List<com.household.finance.data.ActiveLoan>>(emptyList())
     val activeLoans: StateFlow<List<com.household.finance.data.ActiveLoan>> = combine(_activeLoans, _currentProfile) { list, profile ->
         if (profile == null) emptyList()
-        else list.filter { it.owner.isBlank() || it.owner.equals(profile, ignoreCase = true) }
+        else list.filter { it.owner.equals(profile, ignoreCase = true) || (it.owner.isBlank() && it.lastEditedBy.equals(profile, ignoreCase = true)) }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /** The two household profiles (e.g. Vinnu, Rukmini), shared via Firestore. */
