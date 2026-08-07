@@ -258,6 +258,7 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                     initialValue = com.household.finance.data.CategoryListLength.MEDIUM
                 )
                 val salaryCreditDate = profiles.find { it.name == nameMe }?.salaryCreditDate
+                val salaryAmount = entries.find { it.id == com.household.finance.data.salaryEntryId(nameMe) }?.amount
                 SettingsScreen(
                     nameMe = nameMe,
                     nameWife = nameWife,
@@ -267,6 +268,7 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                     firestoreReady = firestoreReady,
                     categoryLength = categoryLength,
                     salaryCreditDate = salaryCreditDate,
+                    salaryAmount = salaryAmount,
                     entries = entries,
                     accounts = accounts,
                     goals = goals,
@@ -280,6 +282,7 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                     onSaveOpenAiKey = { key -> scope.launch { viewModel.settings.saveOpenAiKey(key) } },
                     onSaveFirebaseConfig = { config -> scope.launch { viewModel.settings.saveFirebaseConfig(config) } },
                     onSaveSalaryCreditDate = { day -> viewModel.setSalaryCreditDate(nameMe, day) },
+                    onSaveSalaryAmount = { amount -> viewModel.setSalaryAmount(amount) },
                     onSaveCategoryLength = { length -> scope.launch { viewModel.settings.saveCategoryLength(length) } }
                 )
             }

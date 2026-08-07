@@ -2,6 +2,10 @@ package com.household.finance.data
 
 enum class EntryType { INCOME, EXPENSE, SAVINGS }
 
+/** Stable doc id for a profile's standing salary entry, so Settings can both write and look it up. */
+fun salaryEntryId(person: String): String =
+    "salary_" + person.trim().uppercase().replace(Regex("[^A-Z0-9]+"), "_")
+
 // Whose personal bucket an entry belongs to is carried by `Entry.person`, not by the enum -
 // a single PERSONAL value keeps the schema symmetric across both partners' devices.
 enum class Bucket { JOINT, PERSONAL }

@@ -34,6 +34,9 @@ interface FinanceRepository {
     suspend fun refreshEntries()
     suspend fun addEntry(entry: Entry)
     suspend fun deleteEntry(id: String)
+    /** Upserts this profile's standing monthly salary as a single Income entry with a stable id,
+     *  so re-saving from Settings updates the same entry instead of creating a duplicate each time. */
+    suspend fun setSalaryIncome(person: String, amount: Double)
     /** Re-tags every entry (and any budget limit) from [oldCategory] to [newCategory] - lets two
      *  categories be merged into one after the fact, batched like account/profile renames. */
     suspend fun renameCategory(oldCategory: String, newCategory: String)
@@ -181,6 +184,22 @@ class FirestoreFinanceRepository(private val context: Context) : FinanceReposito
 
     override suspend fun deleteEntry(id: String) {
         entriesCollection()?.document(id)?.delete()
+    }
+
+    override suspend fun setSalaryIncome(person: String, amount: Double) {
+        val col = entriesCollection() ?: return
+        val docId = salaryEntryId(person)
+        val entry = Entry(
+            id = docId,
+            person = person,
+            type = EntryType.INCOME,
+            bucket = Bucket.PERSONAL,
+            category = "Salary",
+            amount = amount,
+            frequency = Frequency.MONTHLY,
+            note = "Monthly salary"
+        )
+        col.document(docId).set(entry.toMap())
     }
 
     override suspend fun renameCategory(oldCategory: String, newCategory: String) {

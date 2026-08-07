@@ -161,6 +161,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { repository.setProfileSalaryDate(name, day) }
     }
 
+    fun setSalaryAmount(amount: Double) {
+        val name = _currentProfile.value ?: return
+        viewModelScope.launch { repository.setSalaryIncome(name, amount) }
+    }
+
     /**
      * Renames the current profile everywhere (entries, goals, accounts, loans) and updates this
      * device's local pointers (current/default/trusted) to follow the new name.

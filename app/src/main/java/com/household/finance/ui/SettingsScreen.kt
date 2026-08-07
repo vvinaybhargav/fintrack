@@ -32,6 +32,7 @@ fun SettingsScreen(
     firestoreReady: Boolean,
     categoryLength: CategoryListLength,
     salaryCreditDate: Int?,
+    salaryAmount: Double?,
     entries: List<Entry>,
     accounts: List<Account>,
     goals: List<Goal>,
@@ -45,7 +46,8 @@ fun SettingsScreen(
     onSaveOpenAiKey: (String) -> Unit,
     onSaveFirebaseConfig: (AppSettings.FirebaseConfig) -> Unit,
     onSaveCategoryLength: (CategoryListLength) -> Unit,
-    onSaveSalaryCreditDate: (Int?) -> Unit
+    onSaveSalaryCreditDate: (Int?) -> Unit,
+    onSaveSalaryAmount: (Double) -> Unit
 ) {
     val context = LocalContext.current
     var resetPinConfirming by remember { mutableStateOf(false) }
@@ -55,6 +57,8 @@ fun SettingsScreen(
     var categoryFromExpanded by remember { mutableStateOf(false) }
     var categoryRenamed by remember { mutableStateOf(false) }
     var salaryDateField by remember(salaryCreditDate) { mutableStateOf(salaryCreditDate?.toString() ?: "") }
+    var salaryAmountField by remember(salaryAmount) { mutableStateOf(salaryAmount?.takeIf { it > 0 }?.toInt()?.toString() ?: "") }
+    var salarySaved by remember { mutableStateOf(false) }
     var newPin by remember { mutableStateOf("") }
     var pinSaved by remember { mutableStateOf(false) }
     var renameField by remember(nameMe) { mutableStateOf(nameMe) }
@@ -144,6 +148,32 @@ fun SettingsScreen(
                     } else {
                         OutlinedButton(onClick = { resetPinConfirming = true }) { Text("Reset $nameWife's PIN") }
                     }
+                }
+
+                Divider(Modifier.padding(vertical = 4.dp))
+
+                Text("Monthly salary", style = MaterialTheme.typography.labelLarge)
+                Text(
+                    "Logged as your standing Income entry — this is what makes Left Over and Savings Rate real numbers instead of showing an empty prompt.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                OutlinedTextField(
+                    value = salaryAmountField,
+                    onValueChange = { salaryAmountField = it.filter { c -> c.isDigit() }; salarySaved = false },
+                    label = { Text("Amount (₹)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(0.6f)
+                )
+                Button(
+                    onClick = {
+                        val amount = salaryAmountField.toDoubleOrNull() ?: return@Button
+                        onSaveSalaryAmount(amount)
+                        salarySaved = true
+                    },
+                    enabled = (salaryAmountField.toDoubleOrNull() ?: 0.0) > 0
+                ) { Text("Save Salary") }
+                if (salarySaved) {
+                    Text("Salary updated.", color = Positive, style = MaterialTheme.typography.bodySmall)
                 }
 
                 Divider(Modifier.padding(vertical = 4.dp))
