@@ -75,6 +75,10 @@ interface FinanceRepository {
     suspend fun setLoanSettled(id: String, settled: Boolean)
     suspend fun setLoanDueDate(id: String, dueDate: String?)
     suspend fun deleteLoan(id: String)
+    fun observeActiveLoans(): Flow<List<ActiveLoan>>
+    suspend fun addActiveLoan(loan: ActiveLoan)
+    suspend fun deleteActiveLoan(id: String)
+    suspend fun updateActiveLoanPrepayment(id: String, amount: Double)
     /** Shared across both phones so either can switch to either profile with the same PIN. */
     fun observeProfiles(): Flow<List<Profile>>
     suspend fun saveProfile(profile: Profile)
@@ -149,6 +153,9 @@ class FirestoreFinanceRepository(private val context: Context) : FinanceReposito
 
     private fun billsCollection() =
         firestore?.collection("workspaces")?.document(WORKSPACE_ID)?.collection("bills")
+
+    private fun activeLoansCollection() =
+        firestore?.collection("workspaces")?.document(WORKSPACE_ID)?.collection("activeLoans")
 
     /** Normalizes an account name to a stable doc id so "icici"/"ICICI"/"Icici" all resolve to one account. */
     private fun accountDocId(name: String) =
@@ -420,6 +427,7 @@ class FirestoreFinanceRepository(private val context: Context) : FinanceReposito
         renameFieldInCollection(db, accountsCollection(), "owner", oldName, newName)
         renameFieldInCollection(db, loansCollection(), "lender", oldName, newName)
         renameFieldInCollection(db, loansCollection(), "borrower", oldName, newName)
+        renameFieldInCollection(db, activeLoansCollection(), "owner", oldName, newName)
 
         profilesCol.document(oldName.trim().uppercase()).delete().awaitTask()
     }
@@ -510,7 +518,33 @@ class FirestoreFinanceRepository(private val context: Context) : FinanceReposito
         col.document(accountDocId(oldName)).delete().awaitTask()
     }
 
-    override suspend fun deleteAccount(name: String) {
-        accountsCollection()?.document(accountDocId(name))?.delete()
+    override fun observeActiveLoans(): Flow<List<ActiveLoan>> = callbackFlow {
+        val col = activeLoansCollection()
+        if (col == null) {
+            trySend(emptyList())
+            awaitClose { }
+            return@callbackFlow
+        }
+        val registration = col.addSnapshotListener { snapshot, _ ->
+            val list = snapshot?.documents?.mapNotNull { doc ->
+                doc.data?.let { ActiveLoan.fromMap(doc.id, it) }
+            } ?: emptyList()
+            trySend(list.sortedByDescending { it.createdAt })
+        }
+        awaitClose { registration.remove() }
+    }
+
+    override suspend fun addActiveLoan(loan: ActiveLoan) {
+        val col = activeLoansCollection() ?: return
+        val docRef = if (loan.id.isBlank()) col.document() else col.document(loan.id)
+        docRef.set(loan.toMap()).awaitTask()
+    }
+
+    override suspend fun deleteActiveLoan(id: String) {
+        activeLoansCollection()?.document(id)?.delete()?.awaitTask()
+    }
+
+    override suspend fun updateActiveLoanPrepayment(id: String, amount: Double) {
+        activeLoansCollection()?.document(id)?.set(mapOf("extraPrepayment" to amount), SetOptions.merge())?.awaitTask()
     }
 }

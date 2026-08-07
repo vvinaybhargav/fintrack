@@ -46,6 +46,7 @@ fun AddEntryScreen(
     var frequency by remember { mutableStateOf(Frequency.MONTHLY) }
     var note by remember { mutableStateOf("") }
     var accountText by remember { mutableStateOf("") }
+    var toAccountText by remember { mutableStateOf("") }
 
     fun resetForm() {
         editId = ""
@@ -58,6 +59,7 @@ fun AddEntryScreen(
         note = ""
         smartText = ""
         accountText = ""
+        toAccountText = ""
     }
 
     fun applyDraft(entry: Entry) {
@@ -70,6 +72,7 @@ fun AddEntryScreen(
         frequency = entry.frequency
         note = entry.note
         accountText = entry.accountName ?: ""
+        toAccountText = entry.toAccountName ?: ""
     }
 
     LaunchedEffect(editingEntry) {
@@ -187,9 +190,18 @@ fun AddEntryScreen(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
+                OutlinedTextField(
+                    value = toAccountText,
+                    onValueChange = { toAccountText = it },
+                    label = { Text("Set aside into account (optional, e.g. Sinking Fund)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
                 if (accountText.isNotBlank() && editId.isBlank()) {
+                    val debitNote = "debits this account automatically (${if (type == EntryType.INCOME) "+" else "-"}₹${amountText.ifBlank { "0" }})"
+                    val creditNote = if (toAccountText.isNotBlank()) " and credits $toAccountText" else ""
                     Text(
-                        "New entries update this account's balance automatically (${if (type == EntryType.INCOME) "+" else "-"}₹${amountText.ifBlank { "0" }}).",
+                        "New entries: $debitNote$creditNote.",
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
@@ -208,7 +220,8 @@ fun AddEntryScreen(
                                 amount = amount,
                                 frequency = frequency,
                                 note = note,
-                                accountName = accountText.trim().ifBlank { null }
+                                accountName = accountText.trim().ifBlank { null },
+                                toAccountName = toAccountText.trim().ifBlank { null }
                             )
                         )
                         resetForm()

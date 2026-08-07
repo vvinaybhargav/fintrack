@@ -55,6 +55,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val _bills = MutableStateFlow<List<com.household.finance.data.Bill>>(emptyList())
     val bills: StateFlow<List<com.household.finance.data.Bill>> = _bills.asStateFlow()
 
+    private val _activeLoans = MutableStateFlow<List<com.household.finance.data.ActiveLoan>>(emptyList())
+    val activeLoans: StateFlow<List<com.household.finance.data.ActiveLoan>> = _activeLoans.asStateFlow()
+
     /** The two household profiles (e.g. Vinnu, Rukmini), shared via Firestore. */
     private val _profiles = MutableStateFlow<List<Profile>>(emptyList())
     val profiles: StateFlow<List<Profile>> = _profiles.asStateFlow()
@@ -111,6 +114,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     launch {
                         repository.observeBills().collect { _bills.value = it }
+                    }
+                    launch {
+                        repository.observeActiveLoans().collect { _activeLoans.value = it }
                     }
                     launch {
                         repository.observeProfiles().collect { list ->
@@ -210,9 +216,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             val isNew = entry.id.isBlank()
             val toSave = if (isNew) entry.copy(person = _currentProfile.value ?: entry.person) else entry
             repository.addEntry(toSave)
-            if (isNew && !toSave.accountName.isNullOrBlank()) {
-                val isNewAccount = _accounts.value.none { it.name.equals(toSave.accountName, ignoreCase = true) }
-                repository.adjustAccountBalance(toSave.accountName, toSave.signedAccountAmount, _currentProfile.value ?: "", isNewAccount, _currentProfile.value ?: "")
+            if (isNew) {
+                if (!toSave.accountName.isNullOrBlank()) {
+                    val isNewAccount = _accounts.value.none { it.name.equals(toSave.accountName, ignoreCase = true) }
+                    repository.adjustAccountBalance(toSave.accountName, toSave.signedAccountAmount, _currentProfile.value ?: "", isNewAccount, _currentProfile.value ?: "")
+                }
+                if (!toSave.toAccountName.isNullOrBlank()) {
+                    val isNewTarget = _accounts.value.none { it.name.equals(toSave.toAccountName, ignoreCase = true) }
+                    repository.adjustAccountBalance(toSave.toAccountName, toSave.amount, _currentProfile.value ?: "", isNewTarget, _currentProfile.value ?: "")
+                }
             }
         }
     }
@@ -236,9 +248,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val entry = _entries.value.find { it.id == id }
             repository.deleteEntry(id)
-            if (entry != null && !entry.accountName.isNullOrBlank()) {
-                // Account already exists at this point (the entry created it), so owner/isNewAccount are unused.
-                repository.adjustAccountBalance(entry.accountName, -entry.signedAccountAmount, "", isNewAccount = false, editedBy = _currentProfile.value ?: "")
+            if (entry != null) {
+                if (!entry.accountName.isNullOrBlank()) {
+                    // Account already exists at this point (the entry created it), so owner/isNewAccount are unused.
+                    repository.adjustAccountBalance(entry.accountName, -entry.signedAccountAmount, "", isNewAccount = false, editedBy = _currentProfile.value ?: "")
+                }
+                if (!entry.toAccountName.isNullOrBlank()) {
+                    repository.adjustAccountBalance(entry.toAccountName, -entry.amount, "", isNewAccount = false, editedBy = _currentProfile.value ?: "")
+                }
             }
         }
     }
@@ -335,5 +352,46 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun markBillPaid(id: String) {
         viewModelScope.launch { repository.markBillPaid(id, _currentProfile.value ?: "") }
+    }
+
+    fun addActiveLoan(loan: com.household.finance.data.ActiveLoan) {
+        viewModelScope.launch {
+            val toSave = if (loan.id.isBlank()) loan.copy(owner = _currentProfile.value ?: loan.owner) else loan
+            repository.addActiveLoan(toSave)
+        }
+    }
+
+    fun deleteActiveLoan(id: String) {
+        viewModelScope.launch { repository.deleteActiveLoan(id) }
+    }
+
+    fun updateActiveLoanPrepayment(id: String, amount: Double) {
+        viewModelScope.launch { repository.updateActiveLoanPrepayment(id, amount) }
+    }
+
+    fun seedDefaultCommitments() {
+        val name = _currentProfile.value ?: return
+        val oneMonthAgo = System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000
+        viewModelScope.launch {
+            if (name.equals("Vinnu", ignoreCase = true)) {
+                repository.addEntry(Entry(person = "Vinnu", type = com.household.finance.data.EntryType.EXPENSE, bucket = com.household.finance.data.Bucket.PERSONAL, category = "EMI", amount = 22000.0, frequency = com.household.finance.data.Frequency.MONTHLY, note = "EMI 1 (ICICI)", createdAt = oneMonthAgo))
+                repository.addEntry(Entry(person = "Vinnu", type = com.household.finance.data.EntryType.EXPENSE, bucket = com.household.finance.data.Bucket.PERSONAL, category = "EMI", amount = 15300.0, frequency = com.household.finance.data.Frequency.MONTHLY, note = "EMI 2 (SBI)", createdAt = oneMonthAgo))
+                repository.addEntry(Entry(person = "Vinnu", type = com.household.finance.data.EntryType.EXPENSE, bucket = com.household.finance.data.Bucket.PERSONAL, category = "Health Insurance", amount = 55000.0, frequency = com.household.finance.data.Frequency.ANNUAL, note = "Health Insurance (parents)", toAccountName = "Sinking Fund", createdAt = oneMonthAgo))
+                repository.addEntry(Entry(person = "Vinnu", type = com.household.finance.data.EntryType.EXPENSE, bucket = com.household.finance.data.Bucket.PERSONAL, category = "Health Insurance", amount = 15000.0, frequency = com.household.finance.data.Frequency.ANNUAL, note = "Health Insurance (me/wife)", toAccountName = "Sinking Fund", createdAt = oneMonthAgo))
+                repository.addEntry(Entry(person = "Vinnu", type = com.household.finance.data.EntryType.EXPENSE, bucket = com.household.finance.data.Bucket.PERSONAL, category = "Car Insurance", amount = 40000.0, frequency = com.household.finance.data.Frequency.ANNUAL, note = "Car Insurance", toAccountName = "Sinking Fund", createdAt = oneMonthAgo))
+                repository.addEntry(Entry(person = "Vinnu", type = com.household.finance.data.EntryType.EXPENSE, bucket = com.household.finance.data.Bucket.PERSONAL, category = "LIC", amount = 40000.0, frequency = com.household.finance.data.Frequency.ANNUAL, note = "LIC Premium", toAccountName = "Sinking Fund", createdAt = oneMonthAgo))
+                repository.addEntry(Entry(person = "Vinnu", type = com.household.finance.data.EntryType.EXPENSE, bucket = com.household.finance.data.Bucket.PERSONAL, category = "Home Expenses", amount = 15000.0, frequency = com.household.finance.data.Frequency.MONTHLY, note = "Home Expenses", createdAt = oneMonthAgo))
+                repository.addEntry(Entry(person = "Vinnu", type = com.household.finance.data.EntryType.SAVINGS, bucket = com.household.finance.data.Bucket.JOINT, category = "Home Expenses", amount = 15000.0, frequency = com.household.finance.data.Frequency.MONTHLY, note = "Joint Home Expenses Contribution", toAccountName = "Joint Account", createdAt = oneMonthAgo))
+            } else if (name.equals("Rukmini", ignoreCase = true)) {
+                repository.addEntry(Entry(person = "Rukmini", type = com.household.finance.data.EntryType.EXPENSE, bucket = com.household.finance.data.Bucket.PERSONAL, category = "EMI", amount = 27500.0, frequency = com.household.finance.data.Frequency.MONTHLY, note = "EMI", createdAt = oneMonthAgo))
+                repository.addEntry(Entry(person = "Rukmini", type = com.household.finance.data.EntryType.EXPENSE, bucket = com.household.finance.data.Bucket.PERSONAL, category = "Music Classes", amount = 4500.0, frequency = com.household.finance.data.Frequency.MONTHLY, note = "Music class fee A", createdAt = oneMonthAgo))
+                repository.addEntry(Entry(person = "Rukmini", type = com.household.finance.data.EntryType.EXPENSE, bucket = com.household.finance.data.Bucket.PERSONAL, category = "Music Classes", amount = 1500.0, frequency = com.household.finance.data.Frequency.MONTHLY, note = "Music class fee B", createdAt = oneMonthAgo))
+                repository.addEntry(Entry(person = "Rukmini", type = com.household.finance.data.EntryType.SAVINGS, bucket = com.household.finance.data.Bucket.PERSONAL, category = "RD", amount = 20000.0, frequency = com.household.finance.data.Frequency.MONTHLY, note = "RD and FD", toAccountName = "RD", createdAt = oneMonthAgo))
+                repository.addEntry(Entry(person = "Rukmini", type = com.household.finance.data.EntryType.EXPENSE, bucket = com.household.finance.data.Bucket.PERSONAL, category = "LIC", amount = 35000.0, frequency = com.household.finance.data.Frequency.ANNUAL, note = "LIC Premium", toAccountName = "Sinking Fund", createdAt = oneMonthAgo))
+                repository.addEntry(Entry(person = "Rukmini", type = com.household.finance.data.EntryType.SAVINGS, bucket = com.household.finance.data.Bucket.PERSONAL, category = "PPF", amount = 50000.0, frequency = com.household.finance.data.Frequency.ANNUAL, note = "PPF Contribution", toAccountName = "PPF", createdAt = oneMonthAgo))
+                repository.addEntry(Entry(person = "Rukmini", type = com.household.finance.data.EntryType.EXPENSE, bucket = com.household.finance.data.Bucket.PERSONAL, category = "Home Expenses", amount = 15000.0, frequency = com.household.finance.data.Frequency.MONTHLY, note = "Home Expenses", createdAt = oneMonthAgo))
+                repository.addEntry(Entry(person = "Rukmini", type = com.household.finance.data.EntryType.SAVINGS, bucket = com.household.finance.data.Bucket.JOINT, category = "Home Expenses", amount = 15000.0, frequency = com.household.finance.data.Frequency.MONTHLY, note = "Joint Home Expenses Contribution", toAccountName = "Joint Account", createdAt = oneMonthAgo))
+            }
+        }
     }
 }

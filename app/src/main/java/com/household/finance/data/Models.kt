@@ -25,6 +25,7 @@ data class Entry(
     val note: String = "",
     val maturityYear: Int? = null,
     val accountName: String? = null,
+    val toAccountName: String? = null,
     val createdAt: Long = System.currentTimeMillis()
 ) {
     /** Amount normalized to a per-month figure, annual entries divided by 12. */
@@ -45,6 +46,7 @@ data class Entry(
         "note" to note,
         "maturityYear" to maturityYear,
         "accountName" to accountName,
+        "toAccountName" to toAccountName,
         "createdAt" to createdAt
     )
 
@@ -60,6 +62,7 @@ data class Entry(
             note = map["note"] as? String ?: "",
             maturityYear = (map["maturityYear"] as? Number)?.toInt(),
             accountName = map["accountName"] as? String,
+            toAccountName = map["toAccountName"] as? String,
             createdAt = (map["createdAt"] as? Number)?.toLong() ?: 0L
         )
     }
@@ -264,18 +267,18 @@ data class Profile(
 enum class CategoryListLength { SHORT, MEDIUM, LONG }
 
 val SHORT_CATEGORIES = listOf(
-    "EMI", "Groceries", "Eating Out", "Utilities", "LIC", "SIP", "Other"
+    "EMI", "Home Expenses", "Groceries", "Eating Out", "Utilities", "LIC", "SIP", "Other"
 )
 
 val MEDIUM_CATEGORIES = listOf(
     "EMI", "Health Insurance", "Car Insurance", "LIC", "Music Classes",
-    "RD", "FD", "PPF", "SIP", "Groceries", "Eating Out", "Utilities", "Other"
+    "RD", "FD", "PPF", "SIP", "Home Expenses", "Groceries", "Eating Out", "Utilities", "Other"
 )
 
 val LONG_CATEGORIES = listOf(
     "EMI", "Rent", "Health Insurance", "Life Insurance", "Car Insurance", "Home Insurance",
     "LIC", "Music Classes", "Tuition/School Fees", "RD", "FD", "PPF", "SIP", "Mutual Funds",
-    "Stocks", "Gold", "Groceries", "Eating Out", "Utilities", "Mobile/Internet", "Fuel",
+    "Stocks", "Gold", "Home Expenses", "Groceries", "Eating Out", "Utilities", "Mobile/Internet", "Fuel",
     "Transport", "Travel", "Medical", "Shopping", "Subscriptions", "Gifts", "Donations",
     "Home Maintenance", "Salary", "Bonus", "Other"
 )
@@ -295,5 +298,45 @@ val INVESTMENT_CATEGORIES = setOf("LIC", "RD", "FD", "PPF", "SIP", "Mutual Funds
 val RECURRING_CATEGORIES = setOf(
     "EMI", "Rent", "Health Insurance", "Life Insurance", "Car Insurance", "Home Insurance",
     "LIC", "Music Classes", "Tuition/School Fees", "RD", "FD", "PPF", "SIP", "Mutual Funds",
-    "Subscriptions"
+    "Subscriptions", "Home Expenses"
 )
+
+data class ActiveLoan(
+    val id: String = "",
+    val name: String = "",
+    val principal: Double = 0.0,
+    val interestRate: Double = 0.0,
+    val totalTenureMonths: Int = 120,
+    val remainingTenureMonths: Int = 120,
+    val monthlyEmi: Double = 0.0,
+    val extraPrepayment: Double = 0.0,
+    val owner: String = "",
+    val createdAt: Long = System.currentTimeMillis()
+) {
+    fun toMap(): Map<String, Any?> = mapOf(
+        "name" to name,
+        "principal" to principal,
+        "interestRate" to interestRate,
+        "totalTenureMonths" to totalTenureMonths,
+        "remainingTenureMonths" to remainingTenureMonths,
+        "monthlyEmi" to monthlyEmi,
+        "extraPrepayment" to extraPrepayment,
+        "owner" to owner,
+        "createdAt" to createdAt
+    )
+
+    companion object {
+        fun fromMap(id: String, map: Map<String, Any?>): ActiveLoan = ActiveLoan(
+            id = id,
+            name = map["name"] as? String ?: "",
+            principal = (map["principal"] as? Number)?.toDouble() ?: 0.0,
+            interestRate = (map["interestRate"] as? Number)?.toDouble() ?: 0.0,
+            totalTenureMonths = (map["totalTenureMonths"] as? Number)?.toInt() ?: 120,
+            remainingTenureMonths = (map["remainingTenureMonths"] as? Number)?.toInt() ?: 120,
+            monthlyEmi = (map["monthlyEmi"] as? Number)?.toDouble() ?: 0.0,
+            extraPrepayment = (map["extraPrepayment"] as? Number)?.toDouble() ?: 0.0,
+            owner = map["owner"] as? String ?: "",
+            createdAt = (map["createdAt"] as? Number)?.toLong() ?: 0L
+        )
+    }
+}

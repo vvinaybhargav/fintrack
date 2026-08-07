@@ -39,6 +39,8 @@ import com.household.finance.data.Entry
 import com.household.finance.data.Goal
 import com.household.finance.data.Loan
 import com.household.finance.data.PolicyStatus
+import com.household.finance.data.ActiveLoan
+import com.household.finance.data.INVESTMENT_CATEGORIES
 import com.household.finance.data.categoriesFor
 import com.household.finance.logic.Calculations
 import com.household.finance.logic.InsightsCoach
@@ -80,6 +82,8 @@ fun DashboardScreen(
     personalFundAmount: Double,
     budgets: Map<String, Double>,
     nameMe: String,
+    defaultAccount: String?,
+    activeLoans: List<com.household.finance.data.ActiveLoan>,
     onSetJointFund: (Double) -> Unit,
     onSetPersonalFund: (Double) -> Unit,
     onSetBudgetLimit: (String, Double) -> Unit,
@@ -93,8 +97,17 @@ fun DashboardScreen(
     onSetLoanDueDate: (String, String?) -> Unit,
     onAddBill: (Bill) -> Unit,
     onDeleteBill: (String) -> Unit,
-    onMarkBillPaid: (String) -> Unit
+    onMarkBillPaid: (String) -> Unit,
+    onCompleteCommitment: (Entry) -> Unit,
+    onUndoCommitment: (String) -> Unit,
+    onSeedCommitments: () -> Unit,
+    onAddActiveLoan: (com.household.finance.data.ActiveLoan) -> Unit,
+    onDeleteActiveLoan: (String) -> Unit,
+    onUpdateActiveLoanPrepayment: (String, Double) -> Unit
 ) {
+    val commitmentsChecklist = remember(entries, nameMe) {
+        Calculations.getCommitmentsChecklist(entries, nameMe)
+    }
     var view by remember { mutableStateOf(DashboardView.PERSONAL) }
     // Emergency fund and its edit callback both follow whichever view (Personal/Joint) is selected.
     val emergencyFundAmount = if (view == DashboardView.PERSONAL) personalFundAmount else jointFundAmount
@@ -206,6 +219,165 @@ fun DashboardScreen(
                         accent = Positive,
                         modifier = Modifier.weight(1f)
                     )
+                }
+            }
+        }
+
+        // --- Monthly Commitments Checklist ---
+        item {
+            GlassSurface(modifier = Modifier.fillMaxWidth()) {
+                Column {
+                    SectionLabel(Icons.Filled.Repeat, "MONTHLY COMMITMENTS & SINKING FUNDS")
+                    Spacer(Modifier.height(10.dp))
+                    
+                    val emisExpenses = commitmentsChecklist.filter { it.template.category in setOf("EMI", "Home Expenses", "Rent", "Groceries", "Utilities", "Other") }
+                    val sinkingFunds = commitmentsChecklist.filter { it.template.category in setOf("Health Insurance", "Car Insurance", "Home Insurance", "Life Insurance") }
+                    val investmentsSavings = commitmentsChecklist.filter { it.template.category in INVESTMENT_CATEGORIES || it.template.category == "Music Classes" }
+                    
+                    if (commitmentsChecklist.isEmpty()) {
+                        Text(
+                            "You haven't initialized your monthly commitments checklist yet.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Button(onClick = onSeedCommitments) {
+                            Text("Quick-seed $nameMe's Commitments Checklist")
+                        }
+                    } else {
+                        if (defaultAccount.isNullOrBlank()) {
+                            Text("⚠️ Please set a Default Account in Settings to enable one-tap payments.", color = Warning, style = MaterialTheme.typography.bodySmall)
+                            Spacer(Modifier.height(8.dp))
+                        }
+                        
+                        if (emisExpenses.isNotEmpty()) {
+                            Text("EMIS & MONTHLY EXPENSES", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Violet, modifier = Modifier.padding(top = 10.dp, bottom = 4.dp))
+                            emisExpenses.forEach { item ->
+                                CommitmentRow(item, defaultAccount, onCompleteCommitment, onUndoCommitment)
+                            }
+                        }
+                        if (sinkingFunds.isNotEmpty()) {
+                            Text("SINKING FUNDS (YEARLY PREMIUMS)", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Violet, modifier = Modifier.padding(top = 10.dp, bottom = 4.dp))
+                            sinkingFunds.forEach { item ->
+                                CommitmentRow(item, defaultAccount, onCompleteCommitment, onUndoCommitment)
+                            }
+                        }
+                        if (investmentsSavings.isNotEmpty()) {
+                            Text("INVESTMENTS & SAVINGS", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Violet, modifier = Modifier.padding(top = 10.dp, bottom = 4.dp))
+                            investmentsSavings.forEach { item ->
+                                CommitmentRow(item, defaultAccount, onCompleteCommitment, onUndoCommitment)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- Sinking Fund Runway Timeline Card ---
+        val sinkingFundAccount = accounts.find { it.name.equals("Sinking Fund", ignoreCase = true) }
+        val sinkingFundBalance = sinkingFundAccount?.balance ?: 0.0
+        val annualCommitments = commitmentsChecklist
+            .filter { it.template.frequency == com.household.finance.data.Frequency.ANNUAL }
+            .map {
+                val dueMonth = when {
+                    it.template.note.contains("parents", ignoreCase = true) -> "September"
+                    it.template.category.contains("Car", ignoreCase = true) -> "November"
+                    it.template.category.contains("LIC", ignoreCase = true) -> "December"
+                    else -> "September"
+                }
+                Triple(it.template.note.ifBlank { it.template.category }, it.template.amount, dueMonth)
+            }
+        
+        if (annualCommitments.isNotEmpty()) {
+            item {
+                GlassSurface(modifier = Modifier.fillMaxWidth()) {
+                    Column {
+                        SectionLabel(Icons.Filled.Shield, "SINKING FUND RUNWAY & TIMELINE")
+                        Spacer(Modifier.height(10.dp))
+                        Text("Total Sinking Fund Balance: ${formatInr(sinkingFundBalance)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Cyan)
+                        Spacer(Modifier.height(6.dp))
+
+                        val currentSurplus = summary.surplus
+                        val totalNeededMonthly = commitmentsChecklist.filter { it.template.frequency == com.household.finance.data.Frequency.ANNUAL }.sumOf { it.monthlyAmount }
+                        val coachRecommendation = when {
+                            sinkingFundBalance < 30000 -> "Vinnu, your Sinking Fund is low. Since you have yearly premiums due later this year, try to set aside at least ${formatInr(totalNeededMonthly)} monthly to avoid cash crunch."
+                            currentSurplus > 10000 -> "You have a healthy surplus of ${formatInr(currentSurplus)} this month! Consider transferring an extra ₹5,000 to your Sinking Fund or making a prepayment on your EMI."
+                            else -> "Your Sinking Fund is on track. Keep transferring the monthly shares of your annual premiums."
+                        }
+
+                        Text("AI Coach: \"$coachRecommendation\"", style = MaterialTheme.typography.bodyMedium, color = Positive, modifier = Modifier.padding(vertical = 4.dp))
+
+                        Divider(Modifier.padding(vertical = 10.dp), color = Color(0x22FFFFFF))
+
+                        Text("YEAR-AT-A-GLANCE TIMELINE", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(6.dp))
+                        
+                        annualCommitments.forEach { (name, amount, dueMonth) ->
+                            val isReady = sinkingFundBalance >= amount
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text(name, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+                                    Text("Due in $dueMonth · ${formatInr(amount)} total", style = MaterialTheme.typography.bodySmall)
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                        .background(if (isReady) Positive.copy(alpha = 0.2f) else Warning.copy(alpha = 0.2f))
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = if (isReady) "READY" else "SHORT BY ${formatInr(amount - sinkingFundBalance)}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (isReady) Positive else Warning,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- EMI & Loan Tracker Card ---
+        item {
+            var showingAddLoan by remember { mutableStateOf(false) }
+            GlassSurface(modifier = Modifier.fillMaxWidth()) {
+                Column {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        SectionLabel(Icons.Filled.AccountBalanceWallet, "EMI & DEBT PAYDOWN TRACKER")
+                        TextButton(onClick = { showingAddLoan = !showingAddLoan }) {
+                            Text(if (showingAddLoan) "Close Form" else "+ Add Loan")
+                        }
+                    }
+                    Spacer(Modifier.height(10.dp))
+
+                    if (showingAddLoan) {
+                        AddLoanForm(
+                            onAdd = { loan ->
+                                onAddActiveLoan(loan)
+                                showingAddLoan = false
+                            },
+                            onCancel = { showingAddLoan = false }
+                        )
+                        Divider(Modifier.padding(vertical = 12.dp), color = Color(0x11FFFFFF))
+                    }
+
+                    val myLoans = activeLoans.filter { it.owner == nameMe }
+                    if (myLoans.isEmpty()) {
+                        Text("No long-term loans added yet. Use '+ Add Loan' above to track your EMI amortization & prepayment benefits.", style = MaterialTheme.typography.bodySmall)
+                    } else {
+                        myLoans.forEach { loan ->
+                            ActiveLoanCard(
+                                loan = loan,
+                                onDelete = { onDeleteActiveLoan(loan.id) },
+                                onUpdatePrepayment = { amt -> onUpdateActiveLoanPrepayment(loan.id, amt) }
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -957,5 +1129,188 @@ private fun GoalContributionForm(onAdd: (Double) -> Unit, onCancel: () -> Unit) 
         Spacer(Modifier.width(8.dp))
         TextButton(onClick = { input.toDoubleOrNull()?.let { if (it > 0) onAdd(it) } }) { Text("Add") }
         TextButton(onClick = onCancel) { Text("Cancel") }
+    }
+}
+
+@Composable
+private fun CommitmentRow(
+    item: Calculations.CommitmentChecklistItem,
+    defaultAccount: String?,
+    onComplete: (Entry) -> Unit,
+    onUndo: (String) -> Unit
+) {
+    val isSinking = item.template.toAccountName != null
+    val actionText = when {
+        item.template.toAccountName != null -> "Set Aside"
+        item.template.bucket == Bucket.JOINT -> "Transfer"
+        else -> "Pay"
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column {
+            Text(item.template.note.ifBlank { item.template.category }, fontWeight = FontWeight.SemiBold)
+            val subText = if (isSinking) {
+                "${formatInr(item.monthlyAmount)}/mo (sinking to ${item.template.toAccountName})"
+            } else if (item.template.frequency == com.household.finance.data.Frequency.ANNUAL) {
+                "${formatInr(item.monthlyAmount)}/mo (yearly ${formatInr(item.template.amount)})"
+            } else {
+                "${formatInr(item.monthlyAmount)}/mo"
+            }
+            Text(subText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+
+        if (item.isCompletedThisMonth) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("✅ Done", color = Positive, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.width(8.dp))
+                TextButton(onClick = { item.completedEntryId?.let { onUndo(it) } }) {
+                    Text("Undo")
+                }
+            }
+        } else {
+            Button(
+                onClick = { onComplete(item.template) }
+            ) {
+                Text(actionText)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActiveLoanCard(
+    loan: com.household.finance.data.ActiveLoan,
+    onDelete: () -> Unit,
+    onUpdatePrepayment: (Double) -> Unit
+) {
+    var extraInput by remember(loan.extraPrepayment) { mutableStateOf(loan.extraPrepayment.toInt().toString()) }
+    val extraVal = extraInput.toDoubleOrNull() ?: 0.0
+
+    val simResult = Calculations.simulateAmortization(
+        principal = loan.principal,
+        annualRatePct = loan.interestRate,
+        monthlyEmi = loan.monthlyEmi,
+        extraMonthly = extraVal
+    )
+
+    GlassSurface(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text(loan.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Violet)
+                TextButton(onClick = onDelete) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            }
+
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Column {
+                    Text("Principal", style = MaterialTheme.typography.labelSmall)
+                    Text(formatInr(loan.principal), fontWeight = FontWeight.SemiBold)
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Interest Rate", style = MaterialTheme.typography.labelSmall)
+                    Text("${loan.interestRate}%", fontWeight = FontWeight.SemiBold)
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text("Monthly EMI", style = MaterialTheme.typography.labelSmall)
+                    Text(formatInr(loan.monthlyEmi) + "/mo", fontWeight = FontWeight.SemiBold)
+                }
+            }
+
+            Divider(color = Color(0x11FFFFFF))
+
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = extraInput,
+                    onValueChange = { 
+                        extraInput = it.filter { c -> c.isDigit() }
+                        val d = it.toDoubleOrNull() ?: 0.0
+                        onUpdatePrepayment(d)
+                    },
+                    label = { Text("Extra monthly prepayment (₹)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                        .background(Color(0x11FFFFFF))
+                        .padding(8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("INTEREST SAVED", style = MaterialTheme.typography.labelSmall, color = Positive)
+                        Text(formatInr(simResult.interestSaved), fontWeight = FontWeight.Bold, color = Positive)
+                    }
+                }
+                Spacer(Modifier.width(8.dp))
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                        .background(Color(0x11FFFFFF))
+                        .padding(8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("TIME SHAVED OFF", style = MaterialTheme.typography.labelSmall, color = Cyan)
+                        val yrs = simResult.monthsSaved / 12
+                        val mos = simResult.monthsSaved % 12
+                        val timeStr = when {
+                            yrs > 0 && mos > 0 -> "${yrs}yr ${mos}mo"
+                            yrs > 0 -> "${yrs}yr"
+                            mos > 0 -> "${mos}mo"
+                            else -> "0mo"
+                        }
+                        Text(timeStr, fontWeight = FontWeight.Bold, color = Cyan)
+                    }
+                }
+            }
+            Text(
+                "Remaining tenure: ${simResult.monthsRemaining} months (saved ${simResult.monthsSaved} months)",
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+    }
+}
+
+@Composable
+private fun AddLoanForm(onAdd: (ActiveLoan) -> Unit, onCancel: () -> Unit) {
+    var name by remember { mutableStateOf("") }
+    var principal by remember { mutableStateOf("") }
+    var rate by remember { mutableStateOf("") }
+    var emi by remember { mutableStateOf("") }
+    var remainingMonths by remember { mutableStateOf("") }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Add Active EMI Loan", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+        OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Loan Name (e.g. ICICI Home Loan)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = principal, onValueChange = { principal = it.filter { c -> c.isDigit() || c == '.' } }, label = { Text("Remaining Principal (₹)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = rate, onValueChange = { rate = it.filter { c -> c.isDigit() || c == '.' } }, label = { Text("Annual Interest Rate (%)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = emi, onValueChange = { emi = it.filter { c -> c.isDigit() || c == '.' } }, label = { Text("Monthly EMI (₹)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = remainingMonths, onValueChange = { remainingMonths = it.filter { c -> c.isDigit() } }, label = { Text("Remaining Tenure (Months)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+
+        Row {
+            Button(onClick = {
+                val p = principal.toDoubleOrNull() ?: 0.0
+                val r = rate.toDoubleOrNull() ?: 0.0
+                val e = emi.toDoubleOrNull() ?: 0.0
+                val t = remainingMonths.toIntOrNull() ?: 120
+                if (name.isBlank() || p <= 0 || r <= 0 || e <= 0) return@Button
+                onAdd(ActiveLoan(name = name, principal = p, interestRate = r, monthlyEmi = e, remainingTenureMonths = t, totalTenureMonths = t))
+            }, enabled = name.isNotBlank() && principal.isNotBlank() && rate.isNotBlank() && emi.isNotBlank()) {
+                Text("Add Loan")
+            }
+            Spacer(Modifier.width(8.dp))
+            TextButton(onClick = onCancel) { Text("Cancel") }
+        }
     }
 }

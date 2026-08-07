@@ -129,13 +129,16 @@ object FinanceAi {
             OpenAI keys in Settings, and never need them.
 
             If the user's latest message is REPORTING A NEW TRANSACTION (an expense, income, or saving —
-            e.g. "paid 22k emi", "22k emi from icici", "20k rd", "55k health insurance yearly"), reply with
+            e.g. "paid 22k emi", "22k emi from icici", "20k rd", "55k health insurance yearly", "set aside 4500 to sinking fund"), reply with
             ONLY a single line:
-            ENTRY:{"type":"INCOME|EXPENSE|SAVINGS","bucket":"JOINT|PERSONAL","category":"one of: ${categories.joinToString(", ")}","amount":number,"frequency":"MONTHLY|ANNUAL","note":"short string","account":"bank/account name if mentioned, else null"}
+            ENTRY:{"type":"INCOME|EXPENSE|SAVINGS","bucket":"JOINT|PERSONAL","category":"one of: ${categories.joinToString(", ")}","amount":number,"frequency":"MONTHLY|ANNUAL","note":"short string","account":"bank/account name if mentioned, else null","toAccount":"sinking fund/savings account if setting aside monthly share of yearly cost, else null"}
             Default bucket to PERSONAL unless the user explicitly says "joint". Set frequency to ANNUAL
             whenever the user says "yearly"/"annual"/"/yr"/"per year", and use the FULL yearly amount as
             given - never divide it yourself, that math happens in the app, not here.
             RD, FD, PPF, SIP, LIC, Mutual Funds, Stocks, Gold are SAVINGS not EXPENSE.
+            
+            CRITICAL: If the user mentions "insurance", "lic", "ppf", "rd", "fd", "emi", or "tax" with a yearly/annual amount (e.g. "insurance for year 55k", "lic 40k per year"), this is a recurring annual commitment. You MUST output ENTRY: with frequency: ANNUAL and type: SAVINGS (for lic/ppf/rd/fd) or EXPENSE (for insurance/emi/tax). NEVER output GOAL: for these under any circumstances, even if they use the word "yearly goal" or "save for yearly".
+            
             IMPORTANT: a recurring bill or premium (EMI, insurance, LIC, subscriptions, rent) is ALWAYS an
             ENTRY, even when it's yearly/annual — it is NEVER a GOAL, no matter how large the amount. Only
             classify something as GOAL if the user is explicitly describing saving up toward a one-off future
@@ -152,8 +155,8 @@ object FinanceAi {
             as stated, do NOT compute months or a monthly figure yourself (that's done in code, not by you):
             GOAL:{"title":"short name","targetAmount":number,"targetMonth":1-12,"targetYear":number,"note":"short string"}
 
-            If the user's latest message describes LENDING OR GIVING MONEY TO THEIR PARTNER (e.g. "gave
-            $nameWife 2k", "lent $nameWife 2000 from icici") - meaning $nameWife now owes $nameMe - reply
+            If the user's latest message describes LENDING, GIVING, OR PAYING MONEY TO THEIR PARTNER (e.g. "gave
+            $nameWife 2k", "lent $nameWife 2000 from icici", "paid Rukmini 5000") - meaning $nameWife now owes $nameMe - reply
             with ONLY a single line:
             LOAN:{"amount":number,"note":"short string","account":"bank/account name if mentioned, else null"}
             (the lender is always the person chatting, the borrower is always their partner - don't ask, just extract the amount.
@@ -172,13 +175,12 @@ object FinanceAi {
             EDIT_ENTRY:{"id":"the matching id","type":"INCOME|EXPENSE|SAVINGS","bucket":"JOINT|PERSONAL","category":"...","amount":number,"frequency":"MONTHLY|ANNUAL","note":"...","label":"short human description of the change"}
             If nothing matches clearly, answer normally instead explaining you couldn't find it - don't guess.
 
-            If the user's latest message asks to TRANSFER or MOVE money to an account (e.g. "transfer 5000 to
-            kotak", "transfer for insurance to kotak" - if no amount is stated but a category is referenced,
-            use that category's amount from the entries below), reply with ONLY a single line. This always
-            moves money FROM the user's default account (already known to the app, never ask which account
-            it's from) TO the account named:
-            TRANSFER:{"amount":number,"toAccount":"bank/account name","note":"short string"}
-            ${if (defaultAccount.isNullOrBlank()) "No default account is set yet - if asked to transfer, answer normally telling the user to set one in Settings first, instead of replying TRANSFER." else "Default account: $defaultAccount"}
+            If the user's latest message asks to TRANSFER or MOVE money between accounts (e.g. "transfer 5000 to
+            kotak", "transfer 15k from icici to joint", "transfer 5k to Rukmini's SBI"), reply with ONLY a single line:
+            TRANSFER:{"fromAccount":"source bank/account name","toAccount":"destination bank/account name","amount":number,"note":"short string"}
+            If the source bank is not explicitly named, default to: ${defaultAccount ?: "null"}.
+            If the destination is "joint", use "Joint Account". If it is the partner's account (like "$nameWife's SBI"), use that account name.
+            ${if (defaultAccount.isNullOrBlank()) "If no default account is set yet and no source account is named, answer normally telling the user to set one in Settings first instead of replying TRANSFER." else "Default account: $defaultAccount"}
 
             For any of these seven cases: no prose, no markdown fences, just that one line. DELETE and EDIT_ENTRY
             will always be shown to the user for confirmation before anything actually happens - you never
@@ -225,7 +227,8 @@ object FinanceAi {
                     frequency = runCatching { com.household.finance.data.Frequency.valueOf(json.getString("frequency")) }
                         .getOrDefault(com.household.finance.data.Frequency.MONTHLY),
                     note = json.optString("note", question),
-                    accountName = json.optString("account", "").ifBlank { null }.takeIf { it != "null" }
+                    accountName = json.optString("account", "").ifBlank { null }.takeIf { it != "null" },
+                    toAccountName = json.optString("toAccount", "").ifBlank { null }.takeIf { it != "null" }
                 )
             }.getOrNull()
             if (parsed != null && parsed.amount > 0) return ChatResult(null, parsed)
@@ -283,15 +286,16 @@ object FinanceAi {
             if (parsed != null) return ChatResult(null, null, null, null, parsed)
         }
 
-        if (raw.startsWith("TRANSFER:") && !defaultAccount.isNullOrBlank()) {
+        if (raw.startsWith("TRANSFER:")) {
             val jsonText = raw.removePrefix("TRANSFER:").trim()
                 .removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
             val parsed = runCatching {
                 val json = JSONObject(jsonText)
                 val amount = json.optDouble("amount", Double.NaN)
+                val fromAccount = json.optString("fromAccount", "").trim().ifBlank { defaultAccount }
                 val toAccount = json.optString("toAccount", "").trim()
-                if (amount.isNaN() || amount <= 0 || toAccount.isBlank()) return@runCatching null
-                TransferDraft(fromAccount = defaultAccount, toAccount = toAccount, amount = amount, note = json.optString("note", question))
+                if (amount.isNaN() || amount <= 0 || toAccount.isBlank() || fromAccount.isNullOrBlank()) return@runCatching null
+                TransferDraft(fromAccount = fromAccount, toAccount = toAccount, amount = amount, note = json.optString("note", question))
             }.getOrNull()
             if (parsed != null) return ChatResult(null, null, null, null, null, null, null, parsed)
         }

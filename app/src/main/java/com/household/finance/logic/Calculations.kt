@@ -66,13 +66,124 @@ object Calculations {
         )
     }
 
+    data class CommitmentChecklistItem(
+        val template: Entry,
+        val monthlyAmount: Double,
+        val isCompletedThisMonth: Boolean,
+        val completedEntryId: String? = null
+    )
+
+    data class AmortizationResult(
+        val totalInterestPaid: Double,
+        val monthsRemaining: Int,
+        val interestSaved: Double,
+        val monthsSaved: Int
+    )
+
     /** Every non-discretionary, recurring commitment (EMI, insurance, LIC, RD/FD/PPF/SIP, rent, etc.),
-     *  each with its monthly figure and the annualized total — for budgeting a whole year at a glance. */
-    fun recurringCommitments(entries: List<Entry>): List<RecurringItem> =
-        entries
-            .filter { it.category in RECURRING_CATEGORIES }
+     *  each with its monthly figure and the annualized total — for budgeting a whole year at a glance.
+     *  Deduplicated by category and note so only the latest template is shown. */
+    fun recurringCommitments(entries: List<Entry>): List<RecurringItem> {
+        val recurringEntries = entries.filter { it.category in RECURRING_CATEGORIES }
+        val uniqueCommitments = recurringEntries
+            .groupBy { it.category + "_" + it.note }
+            .map { (_, list) -> list.maxByOrNull { it.createdAt }!! }
+        return uniqueCommitments
             .map { RecurringItem(it, it.monthlyAmount, it.monthlyAmount * 12.0) }
             .sortedByDescending { it.monthlyAmount }
+    }
+
+    /** Returns the commitments checklist for a given person for the current month. */
+    fun getCommitmentsChecklist(entries: List<Entry>, person: String): List<CommitmentChecklistItem> {
+        val calendar = Calendar.getInstance()
+        val currentYear = calendar.get(Calendar.YEAR)
+        val currentMonth = calendar.get(Calendar.MONTH)
+
+        // 1. Find all entries belonging to this person (or joint bucket) that are recurring commitments.
+        val recurringEntries = entries.filter {
+            (it.person.equals(person, ignoreCase = true) || it.bucket == Bucket.JOINT) &&
+            it.category in RECURRING_CATEGORIES
+        }
+
+        // 2. Group them by category + note. Identify the standing template vs current month's completions.
+        val templates = recurringEntries
+            .groupBy { it.category + "_" + it.note }
+            .map { (_, list) ->
+                val sorted = list.sortedBy { it.createdAt }
+                val currentMonthEntries = sorted.filter { e ->
+                    val cal = Calendar.getInstance().apply { timeInMillis = e.createdAt }
+                    cal.get(Calendar.YEAR) == currentYear && cal.get(Calendar.MONTH) == currentMonth
+                }
+                // The template is the oldest one or the one NOT in the current month.
+                val template = sorted.firstOrNull { e ->
+                    val cal = Calendar.getInstance().apply { timeInMillis = e.createdAt }
+                    cal.get(Calendar.YEAR) != currentYear || cal.get(Calendar.MONTH) != currentMonth
+                } ?: sorted.first()
+                template to currentMonthEntries
+            }
+
+        return templates.map { (template, currentMonthEntries) ->
+            CommitmentChecklistItem(
+                template = template,
+                monthlyAmount = template.monthlyAmount,
+                isCompletedThisMonth = currentMonthEntries.isNotEmpty(),
+                completedEntryId = currentMonthEntries.firstOrNull()?.id
+            )
+        }.sortedByDescending { it.monthlyAmount }
+    }
+
+    /** Simulates month-by-month loan amortization with and without prepayments. */
+    fun simulateAmortization(
+        principal: Double,
+        annualRatePct: Double,
+        monthlyEmi: Double,
+        extraMonthly: Double = 0.0
+    ): AmortizationResult {
+        if (principal <= 0.0 || monthlyEmi <= 0.0) {
+            return AmortizationResult(0.0, 0, 0.0, 0)
+        }
+        val r = annualRatePct / 12.0 / 100.0
+
+        // 1. Simulate baseline (no extra prepayment)
+        var balanceBase = principal
+        var interestBase = 0.0
+        var monthsBase = 0
+        while (balanceBase > 0.0 && monthsBase < 600) {
+            val interestMonth = balanceBase * r
+            interestBase += interestMonth
+            val principalMonth = (monthlyEmi - interestMonth).coerceAtLeast(0.0)
+            if (principalMonth <= 0.0 && r > 0.0) {
+                monthsBase = 600 // unable to pay off
+                break
+            }
+            balanceBase -= principalMonth
+            monthsBase++
+        }
+
+        // 2. Simulate with prepayment
+        var balancePre = principal
+        var interestPre = 0.0
+        var monthsPre = 0
+        while (balancePre > 0.0 && monthsPre < 600) {
+            val interestMonth = balancePre * r
+            interestPre += interestMonth
+            val principalMonth = (monthlyEmi - interestMonth).coerceAtLeast(0.0)
+            val totalReduction = principalMonth + extraMonthly
+            if (totalReduction <= 0.0 && r > 0.0) {
+                monthsPre = 600 // unable to pay off
+                break
+            }
+            balancePre -= totalReduction
+            monthsPre++
+        }
+
+        return AmortizationResult(
+            totalInterestPaid = interestPre,
+            monthsRemaining = if (monthsPre >= 600) 0 else monthsPre,
+            interestSaved = (interestBase - interestPre).coerceAtLeast(0.0),
+            monthsSaved = (monthsBase - monthsPre).coerceAtLeast(0)
+        )
+    }
 
     fun emergencyFundTarget(totalExpenses: Double): Double = totalExpenses * 6.0
 

@@ -117,6 +117,7 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
     val accounts by viewModel.accounts.collectAsStateWithLifecycle()
     val loans by viewModel.loans.collectAsStateWithLifecycle()
     val bills by viewModel.bills.collectAsStateWithLifecycle()
+    val activeLoans by viewModel.activeLoans.collectAsStateWithLifecycle()
     val nameMe by viewModel.nameMe.collectAsStateWithLifecycle()
     val nameWife = profiles.map { it.name }.firstOrNull { it != nameMe } ?: ""
     val openAiKey by viewModel.settings.openAiKeyFlow.collectAsStateWithLifecycle(initialValue = "")
@@ -170,6 +171,7 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                 val categoryLength by viewModel.settings.categoryLengthFlow.collectAsStateWithLifecycle(
                     initialValue = com.household.finance.data.CategoryListLength.MEDIUM
                 )
+                val defaultAccount = profiles.find { it.name == nameMe }?.defaultAccountName
                 DashboardScreen(
                     entries = entries,
                     accounts = myAccounts,
@@ -181,6 +183,8 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                     personalFundAmount = personalEmergencyFund.currentAmount,
                     budgets = budgets,
                     nameMe = nameMe,
+                    defaultAccount = defaultAccount,
+                    activeLoans = activeLoans,
                     onSetJointFund = { viewModel.setEmergencyFund(it) },
                     onSetPersonalFund = { viewModel.setPersonalEmergencyFund(it) },
                     onSetBudgetLimit = { category, limit -> viewModel.setBudgetLimit(category, limit) },
@@ -194,7 +198,26 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                     onSetLoanDueDate = { id, date -> viewModel.setLoanDueDate(id, date) },
                     onAddBill = { viewModel.addBill(it) },
                     onDeleteBill = { viewModel.deleteBill(it) },
-                    onMarkBillPaid = { viewModel.markBillPaid(it) }
+                    onMarkBillPaid = { viewModel.markBillPaid(it) },
+                    onCompleteCommitment = { template ->
+                        val entry = Entry(
+                            person = nameMe,
+                            type = template.type,
+                            bucket = template.bucket,
+                            category = template.category,
+                            amount = template.monthlyAmount,
+                            frequency = com.household.finance.data.Frequency.MONTHLY,
+                            note = template.note,
+                            accountName = defaultAccount ?: myAccounts.firstOrNull()?.name,
+                            toAccountName = template.toAccountName
+                        )
+                        viewModel.addEntry(entry)
+                    },
+                    onUndoCommitment = { id -> viewModel.deleteEntry(id) },
+                    onSeedCommitments = { viewModel.seedDefaultCommitments() },
+                    onAddActiveLoan = { loan -> viewModel.addActiveLoan(loan) },
+                    onDeleteActiveLoan = { id -> viewModel.deleteActiveLoan(id) },
+                    onUpdateActiveLoanPrepayment = { id, amount -> viewModel.updateActiveLoanPrepayment(id, amount) }
                 )
             }
             composable("add") {
