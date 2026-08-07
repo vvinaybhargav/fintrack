@@ -166,7 +166,6 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                     entries = entries,
                     goals = goals,
                     accounts = accounts,
-                    monthlySurplus = summary.surplus,
                     openAiKey = openAiKey,
                     categories = com.household.finance.data.categoriesFor(categoryLength),
                     nameMe = nameMe,
@@ -181,6 +180,7 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                 val categoryLength by viewModel.settings.categoryLengthFlow.collectAsStateWithLifecycle(
                     initialValue = com.household.finance.data.CategoryListLength.MEDIUM
                 )
+                val salaryCreditDate by viewModel.settings.salaryCreditDateFlow.collectAsStateWithLifecycle(initialValue = null)
                 SettingsScreen(
                     nameMe = nameMe,
                     nameWife = nameWife,
@@ -188,9 +188,11 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                     firebaseConfig = firebaseConfig,
                     firestoreReady = firestoreReady,
                     categoryLength = categoryLength,
+                    salaryCreditDate = salaryCreditDate,
                     onSaveNames = { me, wife -> scope.launch { viewModel.settings.saveNames(me, wife) } },
                     onSaveOpenAiKey = { key -> scope.launch { viewModel.settings.saveOpenAiKey(key) } },
                     onSaveFirebaseConfig = { config -> scope.launch { viewModel.settings.saveFirebaseConfig(config) } },
+                    onSaveSalaryCreditDate = { day -> scope.launch { viewModel.settings.saveSalaryCreditDate(day) } },
                     onSaveCategoryLength = { length -> scope.launch { viewModel.settings.saveCategoryLength(length) } }
                 )
             }

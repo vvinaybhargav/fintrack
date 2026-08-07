@@ -14,6 +14,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -346,6 +347,16 @@ private fun MiniStat(label: String, value: String) {
 private fun BalanceChip(account: Account, onSave: (Double) -> Unit) {
     var editing by remember { mutableStateOf(false) }
     var input by remember(account.balance, editing) { mutableStateOf(account.balance.toInt().toString()) }
+    val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+
+    LaunchedEffect(editing) {
+        if (editing) {
+            kotlinx.coroutines.delay(50) // let the field enter composition before focusing it
+            focusRequester.requestFocus()
+            keyboardController?.show()
+        }
+    }
 
     GlassSurface(
         modifier = Modifier
@@ -363,7 +374,7 @@ private fun BalanceChip(account: Account, onSave: (Double) -> Unit) {
                     value = input,
                     onValueChange = { input = it.filter { c -> c.isDigit() || c == '-' } },
                     singleLine = true,
-                    modifier = Modifier.width(120.dp)
+                    modifier = Modifier.width(120.dp).focusRequester(focusRequester)
                 )
                 Spacer(Modifier.height(4.dp))
                 TextButton(onClick = {

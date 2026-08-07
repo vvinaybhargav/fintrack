@@ -33,7 +33,6 @@ fun AiHubScreen(
     entries: List<Entry>,
     goals: List<Goal>,
     accounts: List<Account>,
-    monthlySurplus: Double,
     openAiKey: String,
     categories: List<String>,
     nameMe: String,
@@ -61,10 +60,10 @@ fun AiHubScreen(
         Spacer(Modifier.height(14.dp))
 
         when (tab) {
-            AiTab.CHAT -> ChatPane(entries, accounts, categories, nameMe, nameWife, openAiKey, onAddEntry, onSetAccountBalance)
+            AiTab.CHAT -> ChatPane(entries, accounts, categories, nameMe, nameWife, openAiKey, onAddEntry, onSetAccountBalance, onAddGoal)
             AiTab.BUDGET -> BudgetPane(entries, openAiKey)
             AiTab.ANOMALIES -> AnomaliesPane(entries, openAiKey)
-            AiTab.GOALS -> GoalsPane(goals, monthlySurplus, openAiKey, onAddGoal, onDeleteGoal)
+            AiTab.GOALS -> GoalsPane(goals, openAiKey, onAddGoal, onDeleteGoal)
         }
     }
 }
@@ -88,6 +87,7 @@ private sealed class ChatBubble {
     data class Text(val role: String, val content: String) : ChatBubble()
     data class AddedEntry(val entry: Entry) : ChatBubble()
     data class AppliedBalance(val update: BalanceUpdate) : ChatBubble()
+    data class AddedGoal(val goal: Goal) : ChatBubble()
 }
 
 @Composable
@@ -99,7 +99,8 @@ private fun ChatPane(
     nameWife: String,
     apiKey: String,
     onAddEntry: (Entry) -> Unit,
-    onSetAccountBalance: (String, Double) -> Unit
+    onSetAccountBalance: (String, Double) -> Unit,
+    onAddGoal: (Goal) -> Unit
 ) {
     var input by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
@@ -129,6 +130,11 @@ private fun ChatPane(
                         bubbles.add(ChatBubble.AppliedBalance(r.balanceUpdate))
                         history.add(ChatMessage("assistant", "Balance updated."))
                     }
+                    r.goalDraft != null -> {
+                        onAddGoal(r.goalDraft)
+                        bubbles.add(ChatBubble.AddedGoal(r.goalDraft))
+                        history.add(ChatMessage("assistant", "Goal added."))
+                    }
                     r.replyText != null -> {
                         bubbles.add(ChatBubble.Text("assistant", r.replyText))
                         history.add(ChatMessage("assistant", r.replyText))
@@ -145,7 +151,8 @@ private fun ChatPane(
             GlassSurface(modifier = Modifier.fillMaxWidth()) {
                 Text(
                     "Type \"22k emi\" and it's logged instantly under your name as Personal — say \"joint\" if it's shared. " +
-                        "\"22k emi from icici\" also updates that account's balance. \"sbi balance is 50k\" sets a balance directly. Or just ask a question.",
+                        "\"22k emi from icici\" also updates that account's balance. \"sbi balance is 50k\" sets a balance directly. " +
+                        "\"add goal to buy a car in 2027 jan with down payment 100000\" plans a goal. Or just ask a question.",
                     style = MaterialTheme.typography.bodySmall
                 )
             }
@@ -180,6 +187,20 @@ private fun ChatPane(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text("✅", modifier = Modifier.padding(end = 8.dp))
                                 Text("${bubble.update.account} balance set to ${formatInr(bubble.update.balance)}", color = Positive)
+                            }
+                        }
+                    }
+                    is ChatBubble.AddedGoal -> {
+                        GlassSurface(modifier = Modifier.fillMaxWidth()) {
+                            Column {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("✅", modifier = Modifier.padding(end = 8.dp))
+                                    Text("Goal added: ${bubble.goal.title}", color = Positive)
+                                }
+                                Text(
+                                    "${formatInr(bubble.goal.monthlyContribution)}/mo for ${bubble.goal.targetMonths} months → ${formatInr(bubble.goal.targetAmount)}",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
                             }
                         }
                     }
@@ -306,7 +327,6 @@ private fun AnomaliesPane(entries: List<Entry>, apiKey: String) {
 @Composable
 private fun GoalsPane(
     goals: List<Goal>,
-    monthlySurplus: Double,
     apiKey: String,
     onAddGoal: (Goal) -> Unit,
     onDeleteGoal: (String) -> Unit
@@ -334,7 +354,7 @@ private fun GoalsPane(
                     if (description.isBlank()) return@Button
                     loading = true; error = null
                     Thread {
-                        val r = runCatching { FinanceAi.planGoal(description, monthlySurplus, apiKey) }
+                        val r = runCatching { FinanceAi.planGoal(description, apiKey) }
                         r.onSuccess { onAddGoal(it); description = "" }
                         if (r.isFailure) error = "Couldn't plan that goal right now."
                         loading = false

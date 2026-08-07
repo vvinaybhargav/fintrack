@@ -20,13 +20,16 @@ fun SettingsScreen(
     firebaseConfig: AppSettings.FirebaseConfig,
     firestoreReady: Boolean,
     categoryLength: CategoryListLength,
+    salaryCreditDate: Int?,
     onSaveNames: (String, String) -> Unit,
     onSaveOpenAiKey: (String) -> Unit,
     onSaveFirebaseConfig: (AppSettings.FirebaseConfig) -> Unit,
-    onSaveCategoryLength: (CategoryListLength) -> Unit
+    onSaveCategoryLength: (CategoryListLength) -> Unit,
+    onSaveSalaryCreditDate: (Int?) -> Unit
 ) {
     var meField by remember(nameMe) { mutableStateOf(nameMe) }
     var wifeField by remember(nameWife) { mutableStateOf(nameWife) }
+    var salaryDateField by remember(salaryCreditDate) { mutableStateOf(salaryCreditDate?.toString() ?: "") }
 
     // One comma-separated field: apiKey,appId,projectId,storageBucket,messagingSenderId,openAiKey
     var combinedConfig by remember(firebaseConfig, openAiKey) {
@@ -54,6 +57,17 @@ fun SettingsScreen(
                 OutlinedTextField(value = meField, onValueChange = { meField = it }, label = { Text("Your name") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(value = wifeField, onValueChange = { wifeField = it }, label = { Text("Partner's name") }, modifier = Modifier.fillMaxWidth())
                 Button(onClick = { onSaveNames(meField, wifeField) }) { Text("Save Names") }
+
+                Text("Salary credit date", style = MaterialTheme.typography.labelLarge)
+                Text("Day of the month your salary is usually credited (1-31), for reference.", style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(
+                    value = salaryDateField,
+                    onValueChange = { salaryDateField = it.filter { c -> c.isDigit() }.take(2) },
+                    label = { Text("Day of month") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(0.5f)
+                )
+                Button(onClick = { onSaveSalaryCreditDate(salaryDateField.toIntOrNull()) }) { Text("Save Salary Date") }
             }
         }
 

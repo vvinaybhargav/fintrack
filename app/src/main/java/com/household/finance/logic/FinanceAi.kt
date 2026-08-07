@@ -8,6 +8,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.Calendar
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
@@ -15,10 +16,27 @@ data class ChatMessage(val role: String, val content: String) // role: "user" or
 
 data class AnomalyFlag(val entryId: String, val label: String, val reason: String)
 
-/** Either a plain answer, a parsed transaction ready for one-tap confirm, or a direct balance statement. */
-data class ChatResult(val replyText: String?, val draftEntry: Entry?, val balanceUpdate: BalanceUpdate? = null)
+/** Either a plain answer, a parsed transaction, a direct balance statement, or a new savings goal. */
+data class ChatResult(
+    val replyText: String?,
+    val draftEntry: Entry?,
+    val balanceUpdate: BalanceUpdate? = null,
+    val goalDraft: Goal? = null
+)
 
 data class BalanceUpdate(val account: String, val balance: Double)
+
+/**
+ * Number of monthly contributions from NEXT month through the target month/year inclusive -
+ * plain calendar arithmetic, not an AI estimate. E.g. today is Aug 2026, target Jan 2027 ->
+ * Sep, Oct, Nov, Dec, Jan = 5 months.
+ */
+private fun monthsUntilInclusive(targetMonth: Int, targetYear: Int): Int {
+    val now = Calendar.getInstance()
+    val currentTotal = now.get(Calendar.YEAR) * 12 + (now.get(Calendar.MONTH) + 1)
+    val targetTotal = targetYear * 12 + targetMonth.coerceIn(1, 12)
+    return (targetTotal - currentTotal).coerceAtLeast(1)
+}
 
 /**
  * All OpenAI-backed features, gpt-4o-mini only, called strictly on user action
@@ -95,7 +113,13 @@ object FinanceAi {
             e.g. "sbi balance is 50k", "icici has 2 lakhs", "hdfc balance 30000"), reply with ONLY a single line:
             BALANCE:{"account":"bank/account name","balance":number}
 
-            For either case: no prose, no markdown fences, just that one line.
+            If the user's latest message is DESCRIBING A NEW SAVINGS GOAL with a target amount and a target
+            month/year (e.g. "add goal to buy a car in 2027 jan with down payment of 100000"), reply with
+            ONLY a single line - extract the fields exactly as stated, do NOT compute months or a monthly
+            figure yourself (that's done in code, not by you):
+            GOAL:{"title":"short name","targetAmount":number,"targetMonth":1-12,"targetYear":number,"note":"short string"}
+
+            For any of these three cases: no prose, no markdown fences, just that one line.
 
             Otherwise, answer the user's question using ONLY the data below — never invent numbers.
             Be concise (2-5 sentences), warm, neutral, never judgmental about spending choices.
@@ -144,6 +168,26 @@ object FinanceAi {
                 if (account.isBlank() || balance.isNaN()) null else BalanceUpdate(account, balance)
             }.getOrNull()
             if (parsed != null) return ChatResult(null, null, parsed)
+        }
+
+        if (raw.startsWith("GOAL:")) {
+            val jsonText = raw.removePrefix("GOAL:").trim()
+                .removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
+            val parsed = runCatching {
+                val json = JSONObject(jsonText)
+                val targetAmount = json.optDouble("targetAmount", Double.NaN)
+                val targetMonth = json.optInt("targetMonth", -1)
+                val targetYear = json.optInt("targetYear", -1)
+                if (targetAmount.isNaN() || targetMonth !in 1..12 || targetYear < 2000) return@runCatching null
+                val months = monthsUntilInclusive(targetMonth, targetYear)
+                Goal(
+                    title = json.optString("title", question.take(40)),
+                    targetAmount = targetAmount,
+                    targetMonths = months,
+                    monthlyContribution = (targetAmount / months)
+                )
+            }.getOrNull()
+            if (parsed != null) return ChatResult(null, null, null, parsed)
         }
 
         return ChatResult(raw, null)
@@ -195,23 +239,30 @@ object FinanceAi {
             ?: availableCategories.first()
     }
 
-    /** Goal planning: turns a free-text goal into a structured monthly-contribution plan. */
-    fun planGoal(description: String, monthlySurplus: Double, apiKey: String): Goal {
+    /**
+     * Goal planning: the model only extracts title/amount/target month-year from free text -
+     * the number of months and monthly contribution are computed in code (plain arithmetic),
+     * never estimated by the model. If no target date is given, defaults to 12 months out.
+     */
+    fun planGoal(description: String, apiKey: String): Goal {
         val system = """
-            Convert a household savings goal into strict JSON: {"title": "short name", "targetAmount": number,
-            "targetMonths": integer, "monthlyContribution": number}. monthlyContribution = targetAmount /
-            targetMonths, rounded to nearest 100. Currency is INR, no symbols in numbers. Reply with ONLY the JSON object.
-            The household's current free monthly surplus is ₹${monthlySurplus.toInt()} — mention nothing about this
-            in the JSON, it's just context for realism.
+            Extract fields from this household savings goal description into strict JSON:
+            {"title": "short name", "targetAmount": number, "targetMonth": 1-12 or null, "targetYear": number or null}.
+            Currency is INR, no symbols in numbers. If no target date is mentioned, use null for both.
+            Do not compute months or a monthly figure - just extract what's stated. Reply with ONLY the JSON object.
         """.trimIndent()
         val content = chatCompletion(apiKey, system, description, temperature = 0.2)
             .removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
         val json = JSONObject(content)
+        val targetMonth = if (json.isNull("targetMonth")) -1 else json.optInt("targetMonth", -1)
+        val targetYear = if (json.isNull("targetYear")) -1 else json.optInt("targetYear", -1)
+        val months = if (targetMonth in 1..12 && targetYear >= 2000) monthsUntilInclusive(targetMonth, targetYear) else 12
+        val targetAmount = json.optDouble("targetAmount", 0.0)
         return Goal(
             title = json.optString("title", description.take(40)),
-            targetAmount = json.optDouble("targetAmount", 0.0),
-            targetMonths = json.optInt("targetMonths", 12).coerceAtLeast(1),
-            monthlyContribution = json.optDouble("monthlyContribution", 0.0)
+            targetAmount = targetAmount,
+            targetMonths = months,
+            monthlyContribution = if (months > 0) targetAmount / months else 0.0
         )
     }
 }
