@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
@@ -29,6 +30,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _emergencyFund = MutableStateFlow(EmergencyFund())
     val emergencyFund: StateFlow<EmergencyFund> = _emergencyFund.asStateFlow()
+
+    private val _personalEmergencyFund = MutableStateFlow(EmergencyFund())
+    val personalEmergencyFund: StateFlow<EmergencyFund> = _personalEmergencyFund.asStateFlow()
+
+    private val _budgets = MutableStateFlow<Map<String, Double>>(emptyMap())
+    val budgets: StateFlow<Map<String, Double>> = _budgets.asStateFlow()
 
     private val _summary = MutableStateFlow(Calculations.summarize(emptyList()))
     val summary: StateFlow<DashboardSummary> = _summary.asStateFlow()
@@ -84,6 +91,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         repository.observeEmergencyFund().collect { _emergencyFund.value = it }
                     }
                     launch {
+                        settings.currentProfileFlow.flatMapLatest { name -> repository.observeEmergencyFund(name ?: "") }
+                            .collect { _personalEmergencyFund.value = it }
+                    }
+                    launch {
+                        repository.observeBudgets().collect { _budgets.value = it }
+                    }
+                    launch {
                         repository.observeGoals().collect { _goals.value = it }
                     }
                     launch {
@@ -132,6 +146,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { repository.saveProfile(Profile(name = name, pin = pin)) }
     }
 
+    /** Clears another profile's PIN so they're taken through first-time PIN setup again next sign-in. */
+    fun resetOtherProfilePin(name: String) {
+        viewModelScope.launch { repository.saveProfile(Profile(name = name, pin = "")) }
+    }
+
     fun setSalaryCreditDate(name: String, day: Int?) {
         viewModelScope.launch { repository.setProfileSalaryDate(name, day) }
     }
@@ -167,13 +186,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             repository.addEntry(toSave)
             if (isNew && !toSave.accountName.isNullOrBlank()) {
                 val isNewAccount = _accounts.value.none { it.name.equals(toSave.accountName, ignoreCase = true) }
-                repository.adjustAccountBalance(toSave.accountName, toSave.signedAccountAmount, _currentProfile.value ?: "", isNewAccount)
+                repository.adjustAccountBalance(toSave.accountName, toSave.signedAccountAmount, _currentProfile.value ?: "", isNewAccount, _currentProfile.value ?: "")
             }
         }
     }
 
     fun setAccountBalance(name: String, balance: Double) {
-        viewModelScope.launch { repository.setAccountBalance(name, balance) }
+        viewModelScope.launch { repository.setAccountBalance(name, balance, _currentProfile.value ?: "") }
     }
 
     fun renameAccount(oldName: String, newName: String) {
@@ -193,7 +212,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             repository.deleteEntry(id)
             if (entry != null && !entry.accountName.isNullOrBlank()) {
                 // Account already exists at this point (the entry created it), so owner/isNewAccount are unused.
-                repository.adjustAccountBalance(entry.accountName, -entry.signedAccountAmount, "", isNewAccount = false)
+                repository.adjustAccountBalance(entry.accountName, -entry.signedAccountAmount, "", isNewAccount = false, editedBy = _currentProfile.value ?: "")
             }
         }
     }
@@ -208,6 +227,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setEmergencyFund(amount: Double) {
         viewModelScope.launch { repository.setEmergencyFund(amount) }
+    }
+
+    fun setPersonalEmergencyFund(amount: Double) {
+        viewModelScope.launch { repository.setEmergencyFund(amount, _currentProfile.value ?: "") }
+    }
+
+    fun setBudgetLimit(category: String, limit: Double) {
+        viewModelScope.launch { repository.setBudgetLimit(category, limit) }
     }
 
     /** New goals are always owned by whoever's signed in on this device. */
@@ -239,7 +266,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             repository.addLoan(Loan(lender = lender, borrower = borrower, amount = amount, note = note, accountName = accountName))
             if (!accountName.isNullOrBlank()) {
                 val isNewAccount = _accounts.value.none { it.name.equals(accountName, ignoreCase = true) }
-                repository.adjustAccountBalance(accountName, -amount, lender, isNewAccount)
+                repository.adjustAccountBalance(accountName, -amount, lender, isNewAccount, _currentProfile.value ?: "")
             }
         }
     }
@@ -252,7 +279,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             val accountName = loan?.accountName
             if (loan != null && !accountName.isNullOrBlank()) {
                 val delta = if (settled) loan.amount else -loan.amount
-                repository.adjustAccountBalance(accountName, delta, loan.lender, isNewAccount = false)
+                repository.adjustAccountBalance(accountName, delta, loan.lender, isNewAccount = false, editedBy = _currentProfile.value ?: "")
             }
         }
     }

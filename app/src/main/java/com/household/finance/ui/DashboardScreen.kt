@@ -71,9 +71,13 @@ fun DashboardScreen(
     goals: List<Goal>,
     loans: List<Loan>,
     categoryLength: CategoryListLength,
-    emergencyFundAmount: Double,
+    jointFundAmount: Double,
+    personalFundAmount: Double,
+    budgets: Map<String, Double>,
     nameMe: String,
-    onSetEmergencyFund: (Double) -> Unit,
+    onSetJointFund: (Double) -> Unit,
+    onSetPersonalFund: (Double) -> Unit,
+    onSetBudgetLimit: (String, Double) -> Unit,
     onSetAccountBalance: (String, Double) -> Unit,
     onRenameAccount: (String, String) -> Unit,
     onDeleteAccount: (String) -> Unit,
@@ -82,6 +86,9 @@ fun DashboardScreen(
     onSetLoanSettled: (String, Boolean) -> Unit
 ) {
     var view by remember { mutableStateOf(DashboardView.PERSONAL) }
+    // Emergency fund and its edit callback both follow whichever view (Personal/Joint) is selected.
+    val emergencyFundAmount = if (view == DashboardView.PERSONAL) personalFundAmount else jointFundAmount
+    val onSetEmergencyFund = if (view == DashboardView.PERSONAL) onSetPersonalFund else onSetJointFund
     var efInput by remember(emergencyFundAmount) { mutableStateOf(emergencyFundAmount.toInt().toString()) }
     var detailsExpanded by remember { mutableStateOf(false) }
 
@@ -270,21 +277,13 @@ fun DashboardScreen(
                         val shown = orderedCategorySpend.take(6)
                         val maxAmount = shown.maxOf { it.second }.coerceAtLeast(1.0)
                         shown.forEach { (category, amount) ->
-                            Column(Modifier.padding(bottom = 8.dp)) {
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text(category, style = MaterialTheme.typography.bodySmall)
-                                    Text(formatInr(amount), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
-                                }
-                                Spacer(Modifier.height(4.dp))
-                                Box(Modifier.fillMaxWidth().height(5.dp).background(Color(0x1AFFFFFF), androidx.compose.foundation.shape.RoundedCornerShape(3.dp))) {
-                                    Box(
-                                        Modifier
-                                            .fillMaxWidth(fraction = (amount / maxAmount).toFloat().coerceIn(0f, 1f))
-                                            .height(5.dp)
-                                            .background(Brush.horizontalGradient(listOf(Violet, Cyan)), androidx.compose.foundation.shape.RoundedCornerShape(3.dp))
-                                    )
-                                }
-                            }
+                            CategorySpendRow(
+                                category = category,
+                                amount = amount,
+                                maxAmount = maxAmount,
+                                budgetLimit = budgets[category],
+                                onSetLimit = { limit -> onSetBudgetLimit(category, limit) }
+                            )
                         }
                         if (orderedCategorySpend.size > shown.size) {
                             Text("+${orderedCategorySpend.size - shown.size} more in details below", style = MaterialTheme.typography.bodySmall)
@@ -450,6 +449,59 @@ private fun MiniStat(label: String, value: String, accent: Color = Color.Unspeci
     }
 }
 
+/** One category's spend bar, with an optional monthly budget limit (tap to set/edit, shown in red once exceeded). */
+@Composable
+private fun CategorySpendRow(category: String, amount: Double, maxAmount: Double, budgetLimit: Double?, onSetLimit: (Double) -> Unit) {
+    var editingLimit by remember(category) { mutableStateOf(false) }
+    val overBudget = budgetLimit != null && amount > budgetLimit
+
+    Column(Modifier.padding(bottom = 8.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(category, style = MaterialTheme.typography.bodySmall)
+            Text(
+                formatInr(amount),
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.SemiBold,
+                color = if (overBudget) Warning else Color.Unspecified
+            )
+        }
+        Spacer(Modifier.height(4.dp))
+        Box(Modifier.fillMaxWidth().height(5.dp).background(Color(0x1AFFFFFF), androidx.compose.foundation.shape.RoundedCornerShape(3.dp))) {
+            Box(
+                Modifier
+                    .fillMaxWidth(fraction = (amount / maxAmount).toFloat().coerceIn(0f, 1f))
+                    .height(5.dp)
+                    .background(
+                        if (overBudget) Brush.horizontalGradient(listOf(Warning, Warning)) else Brush.horizontalGradient(listOf(Violet, Cyan)),
+                        androidx.compose.foundation.shape.RoundedCornerShape(3.dp)
+                    )
+            )
+        }
+        Spacer(Modifier.height(2.dp))
+        if (editingLimit) {
+            var input by remember(category) { mutableStateOf(budgetLimit?.toInt()?.toString() ?: "") }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = input,
+                    onValueChange = { input = it.filter { c -> c.isDigit() } },
+                    label = { Text("Monthly budget") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(onClick = { onSetLimit(input.toDoubleOrNull() ?: 0.0); editingLimit = false }) { Text("Save") }
+                TextButton(onClick = { editingLimit = false }) { Text("Cancel") }
+            }
+        } else {
+            Text(
+                if (budgetLimit != null) "Budget: ${formatInr(budgetLimit)}" + if (overBudget) " — over" else "" else "Set a budget",
+                style = MaterialTheme.typography.bodySmall,
+                color = if (overBudget) Warning else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.clickable { editingLimit = true }
+            )
+        }
+    }
+}
+
 @Composable
 private fun BalanceChip(account: Account, onSave: (Double) -> Unit, onRename: (String) -> Unit, onDelete: () -> Unit) {
     var editing by remember { mutableStateOf(false) }
@@ -479,6 +531,10 @@ private fun BalanceChip(account: Account, onSave: (Double) -> Unit, onRename: (S
                     fontWeight = FontWeight.Bold,
                     color = if (account.balance < 0) Warning else Positive
                 )
+                if (account.lastEditedBy.isNotBlank()) {
+                    Spacer(Modifier.height(2.dp))
+                    Text("by ${account.lastEditedBy}", style = MaterialTheme.typography.bodySmall)
+                }
             }
         }
     }

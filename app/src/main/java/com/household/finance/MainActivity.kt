@@ -102,6 +102,8 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
     val entries by viewModel.entries.collectAsStateWithLifecycle()
     val summary by viewModel.summary.collectAsStateWithLifecycle()
     val emergencyFund by viewModel.emergencyFund.collectAsStateWithLifecycle()
+    val personalEmergencyFund by viewModel.personalEmergencyFund.collectAsStateWithLifecycle()
+    val budgets by viewModel.budgets.collectAsStateWithLifecycle()
     val goals by viewModel.goals.collectAsStateWithLifecycle()
     val accounts by viewModel.accounts.collectAsStateWithLifecycle()
     val loans by viewModel.loans.collectAsStateWithLifecycle()
@@ -163,9 +165,13 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                     goals = myGoals,
                     loans = loans,
                     categoryLength = categoryLength,
-                    emergencyFundAmount = emergencyFund.currentAmount,
+                    jointFundAmount = emergencyFund.currentAmount,
+                    personalFundAmount = personalEmergencyFund.currentAmount,
+                    budgets = budgets,
                     nameMe = nameMe,
-                    onSetEmergencyFund = { viewModel.setEmergencyFund(it) },
+                    onSetJointFund = { viewModel.setEmergencyFund(it) },
+                    onSetPersonalFund = { viewModel.setPersonalEmergencyFund(it) },
+                    onSetBudgetLimit = { category, limit -> viewModel.setBudgetLimit(category, limit) },
                     onSetAccountBalance = { name, balance -> viewModel.setAccountBalance(name, balance) },
                     onRenameAccount = { old, new -> viewModel.renameAccount(old, new) },
                     onDeleteAccount = { viewModel.deleteAccount(it) },
@@ -237,16 +243,22 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                 val salaryCreditDate = profiles.find { it.name == nameMe }?.salaryCreditDate
                 SettingsScreen(
                     nameMe = nameMe,
+                    nameWife = nameWife,
                     isDefaultProfile = defaultProfile == nameMe,
                     openAiKey = openAiKey,
                     firebaseConfig = firebaseConfig,
                     firestoreReady = firestoreReady,
                     categoryLength = categoryLength,
                     salaryCreditDate = salaryCreditDate,
+                    entries = entries,
+                    accounts = accounts,
+                    goals = goals,
+                    loans = loans,
                     onSwitchProfile = { manuallyUnlocked = false; viewModel.switchProfile() },
                     onSetDefaultProfile = { viewModel.setDefaultProfile(nameMe) },
                     onChangePin = { pin -> viewModel.setProfilePin(nameMe, pin) },
                     onRenameProfile = { newName -> viewModel.renameCurrentProfile(newName) },
+                    onResetPartnerPin = { viewModel.resetOtherProfilePin(nameWife) },
                     onSaveOpenAiKey = { key -> scope.launch { viewModel.settings.saveOpenAiKey(key) } },
                     onSaveFirebaseConfig = { config -> scope.launch { viewModel.settings.saveFirebaseConfig(config) } },
                     onSaveSalaryCreditDate = { day -> viewModel.setSalaryCreditDate(nameMe, day) },

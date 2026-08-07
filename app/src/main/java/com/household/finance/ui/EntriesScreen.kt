@@ -3,6 +3,7 @@ package com.household.finance.ui
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
@@ -20,8 +21,12 @@ import androidx.compose.ui.unit.dp
 import com.household.finance.data.Bucket
 import com.household.finance.data.Entry
 import com.household.finance.ui.theme.GlassSurface
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 private enum class EntriesView { PERSONAL, JOINT }
+
+private val monthFormat = SimpleDateFormat("MMM yyyy", Locale.US)
 
 @Composable
 fun EntriesScreen(
@@ -33,12 +38,24 @@ fun EntriesScreen(
     onEdit: (Entry) -> Unit
 ) {
     var view by remember { mutableStateOf(EntriesView.PERSONAL) }
+    var categoryFilter by remember { mutableStateOf<String?>(null) }
+    var monthFilter by remember { mutableStateOf<String?>(null) }
 
     // Same split as the dashboard: Personal shows only this profile's own entries, Joint shows shared ones.
-    val filtered = remember(entries, view, nameMe) {
+    val bucketFiltered = remember(entries, view, nameMe) {
         when (view) {
             EntriesView.PERSONAL -> entries.filter { it.bucket == Bucket.PERSONAL && it.person == nameMe }
             EntriesView.JOINT -> entries.filter { it.bucket == Bucket.JOINT }
+        }
+    }
+    val availableCategories = remember(bucketFiltered) { bucketFiltered.map { it.category }.distinct().sorted() }
+    val availableMonths = remember(bucketFiltered) {
+        bucketFiltered.map { monthFormat.format(java.util.Date(it.createdAt)) }.distinct()
+    }
+    val filtered = remember(bucketFiltered, categoryFilter, monthFilter) {
+        bucketFiltered.filter { entry ->
+            (categoryFilter == null || entry.category == categoryFilter) &&
+                (monthFilter == null || monthFormat.format(java.util.Date(entry.createdAt)) == monthFilter)
         }
     }
 
@@ -76,9 +93,33 @@ fun EntriesScreen(
             )
         }
 
+        if (availableMonths.size > 1 || availableCategories.size > 1) {
+            LazyRow(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                item {
+                    FilterChip(selected = monthFilter == null, onClick = { monthFilter = null }, label = { Text("All months") })
+                }
+                items(availableMonths) { month ->
+                    FilterChip(selected = monthFilter == month, onClick = { monthFilter = if (monthFilter == month) null else month }, label = { Text(month) })
+                }
+                item {
+                    FilterChip(selected = categoryFilter == null, onClick = { categoryFilter = null }, label = { Text("All categories") })
+                }
+                items(availableCategories) { category ->
+                    FilterChip(selected = categoryFilter == category, onClick = { categoryFilter = if (categoryFilter == category) null else category }, label = { Text(category) })
+                }
+            }
+        }
+
         if (filtered.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(if (view == EntriesView.PERSONAL) "No personal entries yet. Add one from the AI tab's Chat." else "No joint entries yet.")
+                Text(
+                    if (categoryFilter != null || monthFilter != null) "No entries match these filters."
+                    else if (view == EntriesView.PERSONAL) "No personal entries yet. Add one from the AI tab's Chat."
+                    else "No joint entries yet."
+                )
             }
             return@Column
         }

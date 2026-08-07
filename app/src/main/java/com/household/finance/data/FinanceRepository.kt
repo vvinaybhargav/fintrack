@@ -34,19 +34,23 @@ interface FinanceRepository {
     suspend fun refreshEntries()
     suspend fun addEntry(entry: Entry)
     suspend fun deleteEntry(id: String)
-    fun observeEmergencyFund(): Flow<EmergencyFund>
-    suspend fun setEmergencyFund(amount: Double)
+    /** [owner] blank observes the shared/joint fund; a profile name observes that profile's personal fund. */
+    fun observeEmergencyFund(owner: String = ""): Flow<EmergencyFund>
+    suspend fun setEmergencyFund(amount: Double, owner: String = "")
     fun observeGoals(): Flow<List<Goal>>
     suspend fun addGoal(goal: Goal)
     suspend fun deleteGoal(id: String)
     fun observeAccounts(): Flow<List<Account>>
     /** Absolute overwrite — used for manual edits and explicit "X balance is Y" statements. Never touches owner. */
-    suspend fun setAccountBalance(name: String, balance: Double)
+    suspend fun setAccountBalance(name: String, balance: Double, editedBy: String = "")
     /** Atomic +/- applied when a transaction is tagged with an account. [isNewAccount] should reflect
      *  whether the caller's last-synced account list already has this name - determines whether this
      *  writes an initial doc (tagged to [owner]) or increments an existing one (owner untouched).
      *  Deliberately avoids Firestore transactions here, which don't reliably commit offline. */
-    suspend fun adjustAccountBalance(name: String, delta: Double, owner: String, isNewAccount: Boolean)
+    suspend fun adjustAccountBalance(name: String, delta: Double, owner: String, isNewAccount: Boolean, editedBy: String = "")
+    /** Per-category monthly budget limits, shared across the household. */
+    fun observeBudgets(): Flow<Map<String, Double>>
+    suspend fun setBudgetLimit(category: String, limit: Double)
     /** Renames an account and re-tags every entry referencing it (batched). Balance/owner carry over. */
     suspend fun renameAccount(oldName: String, newName: String)
     /** Stops tracking this account. Entries that referenced it keep their historical accountName as-is. */
@@ -109,8 +113,12 @@ class FirestoreFinanceRepository(private val context: Context) : FinanceReposito
     private fun entriesCollection() =
         firestore?.collection("workspaces")?.document(WORKSPACE_ID)?.collection("entries")
 
-    private fun metaDoc() =
-        firestore?.collection("workspaces")?.document(WORKSPACE_ID)?.collection("meta")?.document("emergencyFund")
+    private fun metaDoc(owner: String = "") =
+        firestore?.collection("workspaces")?.document(WORKSPACE_ID)?.collection("meta")
+            ?.document(if (owner.isBlank()) "emergencyFund" else "emergencyFund_${owner.trim().uppercase()}")
+
+    private fun budgetsDoc() =
+        firestore?.collection("workspaces")?.document(WORKSPACE_ID)?.collection("meta")?.document("budgets")
 
     private fun goalsCollection() =
         firestore?.collection("workspaces")?.document(WORKSPACE_ID)?.collection("goals")
@@ -162,22 +170,40 @@ class FirestoreFinanceRepository(private val context: Context) : FinanceReposito
         entriesCollection()?.document(id)?.delete()
     }
 
-    override fun observeEmergencyFund(): Flow<EmergencyFund> = callbackFlow {
-        val doc = metaDoc()
+    override fun observeEmergencyFund(owner: String): Flow<EmergencyFund> = callbackFlow {
+        val doc = metaDoc(owner)
         if (doc == null) {
-            trySend(EmergencyFund())
+            trySend(EmergencyFund(owner = owner))
             awaitClose { }
             return@callbackFlow
         }
         val registration = doc.addSnapshotListener { snapshot, _ ->
             val amount = (snapshot?.getDouble("currentAmount")) ?: 0.0
-            trySend(EmergencyFund(amount))
+            trySend(EmergencyFund(amount, owner))
         }
         awaitClose { registration.remove() }
     }
 
-    override suspend fun setEmergencyFund(amount: Double) {
-        metaDoc()?.set(mapOf("currentAmount" to amount))
+    override suspend fun setEmergencyFund(amount: Double, owner: String) {
+        metaDoc(owner)?.set(mapOf("currentAmount" to amount, "owner" to owner))
+    }
+
+    override fun observeBudgets(): Flow<Map<String, Double>> = callbackFlow {
+        val doc = budgetsDoc()
+        if (doc == null) {
+            trySend(emptyMap())
+            awaitClose { }
+            return@callbackFlow
+        }
+        val registration = doc.addSnapshotListener { snapshot, _ ->
+            val map = snapshot?.data?.mapNotNull { (k, v) -> (v as? Number)?.toDouble()?.let { k to it } }?.toMap() ?: emptyMap()
+            trySend(map)
+        }
+        awaitClose { registration.remove() }
+    }
+
+    override suspend fun setBudgetLimit(category: String, limit: Double) {
+        budgetsDoc()?.set(mapOf(category to limit), SetOptions.merge())
     }
 
     override fun observeGoals(): Flow<List<Goal>> = callbackFlow {
@@ -319,15 +345,18 @@ class FirestoreFinanceRepository(private val context: Context) : FinanceReposito
         awaitClose { registration.remove() }
     }
 
-    override suspend fun setAccountBalance(name: String, balance: Double) {
+    override suspend fun setAccountBalance(name: String, balance: Double, editedBy: String) {
         val col = accountsCollection() ?: return
         col.document(accountDocId(name)).set(
-            mapOf("name" to name.trim().uppercase(), "balance" to balance, "updatedAt" to System.currentTimeMillis()),
+            mapOf(
+                "name" to name.trim().uppercase(), "balance" to balance,
+                "lastEditedBy" to editedBy, "updatedAt" to System.currentTimeMillis()
+            ),
             SetOptions.merge()
         )
     }
 
-    override suspend fun adjustAccountBalance(name: String, delta: Double, owner: String, isNewAccount: Boolean) {
+    override suspend fun adjustAccountBalance(name: String, delta: Double, owner: String, isNewAccount: Boolean, editedBy: String) {
         val col = accountsCollection() ?: return
         val docRef = col.document(accountDocId(name))
         if (isNewAccount) {
@@ -339,12 +368,13 @@ class FirestoreFinanceRepository(private val context: Context) : FinanceReposito
                     "name" to name.trim().uppercase(),
                     "balance" to delta,
                     "owner" to owner,
+                    "lastEditedBy" to editedBy,
                     "updatedAt" to System.currentTimeMillis()
                 )
             )
         } else {
             docRef.set(
-                mapOf("balance" to FieldValue.increment(delta), "updatedAt" to System.currentTimeMillis()),
+                mapOf("balance" to FieldValue.increment(delta), "lastEditedBy" to editedBy, "updatedAt" to System.currentTimeMillis()),
                 SetOptions.merge()
             )
         }

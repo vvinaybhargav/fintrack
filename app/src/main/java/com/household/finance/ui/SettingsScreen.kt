@@ -1,5 +1,6 @@
 package com.household.finance.ui
 
+import android.content.Intent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -7,32 +8,45 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.household.finance.data.Account
 import com.household.finance.data.AppSettings
 import com.household.finance.data.CategoryListLength
+import com.household.finance.data.Entry
+import com.household.finance.data.Goal
+import com.household.finance.data.Loan
 import com.household.finance.ui.theme.GlassSurface
 import com.household.finance.ui.theme.Positive
 
 @Composable
 fun SettingsScreen(
     nameMe: String,
+    nameWife: String,
     isDefaultProfile: Boolean,
     openAiKey: String,
     firebaseConfig: AppSettings.FirebaseConfig,
     firestoreReady: Boolean,
     categoryLength: CategoryListLength,
     salaryCreditDate: Int?,
+    entries: List<Entry>,
+    accounts: List<Account>,
+    goals: List<Goal>,
+    loans: List<Loan>,
     onSwitchProfile: () -> Unit,
     onSetDefaultProfile: () -> Unit,
     onChangePin: (String) -> Unit,
     onRenameProfile: (String) -> Unit,
+    onResetPartnerPin: () -> Unit,
     onSaveOpenAiKey: (String) -> Unit,
     onSaveFirebaseConfig: (AppSettings.FirebaseConfig) -> Unit,
     onSaveCategoryLength: (CategoryListLength) -> Unit,
     onSaveSalaryCreditDate: (Int?) -> Unit
 ) {
+    val context = LocalContext.current
+    var resetPinConfirming by remember { mutableStateOf(false) }
     var salaryDateField by remember(salaryCreditDate) { mutableStateOf(salaryCreditDate?.toString() ?: "") }
     var newPin by remember { mutableStateOf("") }
     var pinSaved by remember { mutableStateOf(false) }
@@ -106,6 +120,23 @@ fun SettingsScreen(
                 ) { Text("Save PIN") }
                 if (pinSaved) {
                     Text("PIN updated.", color = Positive, style = MaterialTheme.typography.bodySmall)
+                }
+
+                if (nameWife.isNotBlank()) {
+                    Divider(Modifier.padding(vertical = 4.dp))
+                    Text("$nameWife forgot their PIN?", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "Resets it so they set a new one next time they sign in.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    if (resetPinConfirming) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = { onResetPartnerPin(); resetPinConfirming = false }) { Text("Confirm reset") }
+                            OutlinedButton(onClick = { resetPinConfirming = false }) { Text("Cancel") }
+                        }
+                    } else {
+                        OutlinedButton(onClick = { resetPinConfirming = true }) { Text("Reset $nameWife's PIN") }
+                    }
                 }
 
                 Divider(Modifier.padding(vertical = 4.dp))
@@ -184,6 +215,62 @@ fun SettingsScreen(
             }
         }
 
+        GlassSurface(modifier = Modifier.fillMaxWidth()) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("EXPORT DATA", style = MaterialTheme.typography.labelLarge)
+                Text("Shares a CSV of entries, accounts, goals, and IOUs — save it, email it, or drop it in Drive.", style = MaterialTheme.typography.bodySmall)
+                Button(onClick = {
+                    val csv = buildCsvExport(entries, accounts, goals, loans)
+                    val intent = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/csv"
+                        putExtra(Intent.EXTRA_SUBJECT, "Household Finance export")
+                        putExtra(Intent.EXTRA_TEXT, csv)
+                    }
+                    context.startActivity(Intent.createChooser(intent, "Export data"))
+                }) { Text("Export CSV") }
+            }
+        }
+
         Spacer(Modifier.height(32.dp))
     }
+}
+
+private fun csvEscape(value: String): String =
+    if (value.contains(",") || value.contains("\"") || value.contains("\n")) {
+        "\"" + value.replace("\"", "\"\"") + "\""
+    } else value
+
+private fun buildCsvExport(entries: List<Entry>, accounts: List<Account>, goals: List<Goal>, loans: List<Loan>): String {
+    val sb = StringBuilder()
+    sb.appendLine("ENTRIES")
+    sb.appendLine("Person,Type,Bucket,Category,Amount,Frequency,Account,Note")
+    entries.forEach {
+        sb.appendLine(
+            listOf(it.person, it.type.name, it.bucket.name, it.category, it.amount.toString(), it.frequency.name, it.accountName ?: "", it.note)
+                .joinToString(",") { v -> csvEscape(v) }
+        )
+    }
+    sb.appendLine()
+    sb.appendLine("ACCOUNTS")
+    sb.appendLine("Name,Balance,Owner")
+    accounts.forEach { sb.appendLine(listOf(it.name, it.balance.toString(), it.owner).joinToString(",") { v -> csvEscape(v) }) }
+    sb.appendLine()
+    sb.appendLine("GOALS")
+    sb.appendLine("Title,Target,SavedSoFar,Completed,Owner")
+    goals.forEach {
+        sb.appendLine(
+            listOf(it.title, it.targetAmount.toString(), it.savedSoFar.toString(), it.completed.toString(), it.owner)
+                .joinToString(",") { v -> csvEscape(v) }
+        )
+    }
+    sb.appendLine()
+    sb.appendLine("LOANS")
+    sb.appendLine("Lender,Borrower,Amount,Settled,Note")
+    loans.forEach {
+        sb.appendLine(
+            listOf(it.lender, it.borrower, it.amount.toString(), it.settled.toString(), it.note)
+                .joinToString(",") { v -> csvEscape(v) }
+        )
+    }
+    return sb.toString()
 }

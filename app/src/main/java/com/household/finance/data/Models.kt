@@ -66,22 +66,29 @@ data class Account(
     val balance: Double = 0.0,
     /** Profile that owns this account; blank means "existed before ownership was tracked" - visible to everyone. */
     val owner: String = "",
+    /** Who last touched this balance (edit or a tagged entry/loan), for a lightweight audit trail. */
+    val lastEditedBy: String = "",
     val updatedAt: Long = System.currentTimeMillis()
 ) {
-    fun toMap(): Map<String, Any?> = mapOf("name" to name, "balance" to balance, "owner" to owner, "updatedAt" to updatedAt)
+    fun toMap(): Map<String, Any?> = mapOf(
+        "name" to name, "balance" to balance, "owner" to owner, "lastEditedBy" to lastEditedBy, "updatedAt" to updatedAt
+    )
 
     companion object {
         fun fromMap(id: String, map: Map<String, Any?>): Account = Account(
             name = map["name"] as? String ?: id,
             balance = (map["balance"] as? Number)?.toDouble() ?: 0.0,
             owner = map["owner"] as? String ?: "",
+            lastEditedBy = map["lastEditedBy"] as? String ?: "",
             updatedAt = (map["updatedAt"] as? Number)?.toLong() ?: 0L
         )
     }
 }
 
 data class EmergencyFund(
-    val currentAmount: Double = 0.0
+    val currentAmount: Double = 0.0,
+    /** Blank means the shared/joint fund (legacy default); a profile name means that profile's personal fund. */
+    val owner: String = ""
 )
 
 data class Goal(
