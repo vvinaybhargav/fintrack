@@ -80,6 +80,9 @@ Every push triggers `.github/workflows/build-apk.yml`, which:
 4. Uploads `app-debug.apk` as a workflow artifact named
    **household-finance-debug-apk**.
 
+### One-time note on updating the APK
+Every build is now signed with a fixed debug key committed at [`app/debug.keystore`](app/debug.keystore) (not a random per-CI-run key), so future downloads install as an **update** over the existing app — no uninstall needed, your PIN/local settings stay put. If you already have a copy installed from before this was added, you'll need to uninstall it **once** — after that, every new download from the `latest` release updates in place.
+
 ## 2. Download and install the APK
 
 1. On GitHub, open the repo → **Actions** tab → the latest **Build APK** run.

@@ -15,9 +15,22 @@ android {
         versionName = "1.0"
     }
 
+    signingConfigs {
+        // Fixed, checked-in debug key (NOT the default per-machine ~/.android/debug.keystore).
+        // CI would otherwise generate a fresh random key on every run, making each APK unable
+        // to install over the previous one ("package conflicts") without an uninstall first.
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("debug")
         }
         release {
             isMinifyEnabled = false
