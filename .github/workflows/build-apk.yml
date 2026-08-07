@@ -34,7 +34,7 @@ jobs:
 
       - name: Rename APK (timestamped copy for history + a permanent "latest" filename)
         run: |
-          STAMP=$(date -u +%Y-%m-%d_%H%M)
+          STAMP=$(TZ='Asia/Kolkata' date +%Y-%m-%d_%H%M)
           echo "STAMP=$STAMP" >> "$GITHUB_ENV"
           cp app/build/outputs/apk/debug/app-debug.apk "app/build/outputs/apk/debug/household-finance-${STAMP}.apk"
           cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/household-finance-latest.apk
@@ -50,7 +50,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          name: Latest build (${{ env.STAMP }} UTC)
+          name: Latest build (${{ env.STAMP }} IST)
           body: |
             Automatically built from the latest push to main.
             Open https://github.com/${{ github.repository }}/releases/latest any time to find the newest APK.
