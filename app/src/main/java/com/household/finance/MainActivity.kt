@@ -25,6 +25,7 @@ import com.household.finance.ui.AiHubScreen
 import com.household.finance.ui.AppViewModel
 import com.household.finance.ui.DashboardScreen
 import com.household.finance.ui.EntriesScreen
+import com.household.finance.ui.FirebaseSetupScreen
 import com.household.finance.ui.ProfileGateScreen
 import com.household.finance.ui.SettingsScreen
 import com.household.finance.ui.theme.GlassBackdrop
@@ -62,6 +63,18 @@ private val tabs = listOf(
 
 @Composable
 private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
+    val firestoreReadyEarly by viewModel.firestoreReady.collectAsStateWithLifecycle()
+    val scopeEarly = rememberCoroutineScope()
+
+    // Without Firestore configured, the profile gate below has nothing to show (the profile list
+    // only exists once connected) - so a fresh install would be stuck forever. Let config happen first.
+    if (!firestoreReadyEarly) {
+        FirebaseSetupScreen(
+            onSaveFirebaseConfig = { config -> scopeEarly.launch { viewModel.settings.saveFirebaseConfig(config) } }
+        )
+        return
+    }
+
     val profiles by viewModel.profiles.collectAsStateWithLifecycle()
     val currentProfile by viewModel.currentProfile.collectAsStateWithLifecycle()
     val trustedProfiles by viewModel.settings.trustedProfilesFlow.collectAsStateWithLifecycle(initialValue = emptySet())
@@ -206,8 +219,11 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                     onAddGoal = { viewModel.addGoal(it) },
                     onDeleteGoal = { viewModel.deleteGoal(it) },
                     onAddEntry = { viewModel.addEntry(it) },
+                    onDeleteEntry = { viewModel.deleteEntry(it) },
+                    onEditEntry = { viewModel.addEntry(it) },
                     onSetAccountBalance = { name, balance -> viewModel.setAccountBalance(name, balance) },
-                    onAddLoan = { lender, borrower, amount, note -> viewModel.addLoan(lender, borrower, amount, note) }
+                    onAddLoan = { lender, borrower, amount, note -> viewModel.addLoan(lender, borrower, amount, note) },
+                    onDeleteLoan = { viewModel.deleteLoan(it) }
                 )
             }
             composable("settings") {

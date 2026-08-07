@@ -17,16 +17,24 @@ data class ChatMessage(val role: String, val content: String) // role: "user" or
 
 data class AnomalyFlag(val entryId: String, val label: String, val reason: String)
 
-/** Either a plain answer, a parsed transaction, a direct balance statement, a new savings goal, or a loan. */
+/** Either a plain answer, a parsed transaction, a direct balance statement, a new savings goal, a loan, or an edit/delete request. */
 data class ChatResult(
     val replyText: String?,
     val draftEntry: Entry?,
     val balanceUpdate: BalanceUpdate? = null,
     val goalDraft: Goal? = null,
-    val loanDraft: Loan? = null
+    val loanDraft: Loan? = null,
+    val deleteTarget: DeleteTarget? = null,
+    val editTarget: EditTarget? = null
 )
 
 data class BalanceUpdate(val account: String, val balance: Double)
+
+/** kind is one of "ENTRY", "GOAL", "LOAN". Requires explicit user confirmation before applying - never auto-applied. */
+data class DeleteTarget(val kind: String, val id: String, val label: String)
+
+/** Entry edit only, for now. Requires explicit user confirmation before applying - never auto-applied. */
+data class EditTarget(val id: String, val label: String, val updatedEntry: Entry)
 
 /**
  * Number of monthly contributions from NEXT month through the target month/year inclusive -
@@ -77,7 +85,7 @@ object FinanceAi {
     private fun entriesDigest(entries: List<Entry>): String {
         if (entries.isEmpty()) return "No entries recorded yet."
         return entries.joinToString("\n") {
-            "${it.person} | ${it.type} | ${it.bucket} | ${it.category} | ₹${it.amount.toInt()} " +
+            "id:${it.id} | ${it.person} | ${it.type} | ${it.bucket} | ${it.category} | ₹${it.amount.toInt()} " +
                 "(${it.frequency}, ₹${it.monthlyAmount.toInt()}/mo effective)" +
                 (if (it.note.isNotBlank()) " | note: ${it.note}" else "")
         }
@@ -104,9 +112,9 @@ object FinanceAi {
         val accountsDigest = if (accounts.isEmpty()) "No accounts tracked yet." else
             accounts.joinToString(", ") { "${it.name}: ₹${it.balance.toInt()}" }
         val goalsDigest = if (goals.isEmpty()) "No goals set." else
-            goals.joinToString("; ") { "${it.title}: ₹${it.savedSoFar.toInt()}/₹${it.targetAmount.toInt()} saved, ₹${it.monthlyContribution.toInt()}/mo, ${it.targetMonths}mo plan${if (it.completed) " (REACHED)" else ""}" }
+            goals.joinToString("; ") { "id:${it.id} ${it.title}: ₹${it.savedSoFar.toInt()}/₹${it.targetAmount.toInt()} saved, ₹${it.monthlyContribution.toInt()}/mo, ${it.targetMonths}mo plan${if (it.completed) " (REACHED)" else ""}" }
         val loansDigest = if (loans.isEmpty()) "No IOUs." else
-            loans.joinToString("; ") { "${it.lender} lent ${it.borrower} ₹${it.amount.toInt()}${if (it.settled) " (settled)" else " (outstanding)"}" }
+            loans.joinToString("; ") { "id:${it.id} ${it.lender} lent ${it.borrower} ₹${it.amount.toInt()}${if (it.settled) " (settled)" else " (outstanding)"}" }
 
         val system = """
             You are a household budgeting assistant for an Indian married couple using an app called
@@ -137,7 +145,22 @@ object FinanceAi {
             LOAN:{"amount":number,"note":"short string"}
             (the lender is always the person chatting, the borrower is always their partner - don't ask, just extract the amount)
 
-            For any of these four cases: no prose, no markdown fences, just that one line.
+            If the user's latest message asks to DELETE an entry, goal, or IOU (e.g. "delete the car goal",
+            "remove that EMI entry", "delete the loan to $nameWife"), find the best-matching item by its id in
+            the data below and reply with ONLY a single line:
+            DELETE:{"kind":"ENTRY|GOAL|LOAN","id":"the matching id","label":"short human description of what would be deleted"}
+            If nothing matches clearly, answer normally instead explaining you couldn't find it - don't guess.
+
+            If the user's latest message asks to EDIT/CHANGE an existing entry (e.g. "change the EMI amount
+            to 25k", "update groceries note to include this month's vegetables"), find the best-matching entry
+            by its id and reply with ONLY a single line, including EVERY field with either the new value or
+            the entry's existing unchanged value (never leave a field out):
+            EDIT_ENTRY:{"id":"the matching id","type":"INCOME|EXPENSE|SAVINGS","bucket":"JOINT|PERSONAL","category":"...","amount":number,"frequency":"MONTHLY|ANNUAL","note":"...","label":"short human description of the change"}
+            If nothing matches clearly, answer normally instead explaining you couldn't find it - don't guess.
+
+            For any of these six cases: no prose, no markdown fences, just that one line. DELETE and EDIT_ENTRY
+            will always be shown to the user for confirmation before anything actually happens - you never
+            need to ask for confirmation yourself, just extract the request.
 
             Otherwise, answer the user's question using ONLY the data below — never invent numbers. You can
             do arithmetic/projections over this data (e.g. "how much can I save by July if my rent goes up
@@ -228,6 +251,45 @@ object FinanceAi {
                 Loan(lender = nameMe, borrower = nameWife, amount = amount, note = json.optString("note", question))
             }.getOrNull()
             if (parsed != null) return ChatResult(null, null, null, null, parsed)
+        }
+
+        if (raw.startsWith("DELETE:")) {
+            val jsonText = raw.removePrefix("DELETE:").trim()
+                .removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
+            val parsed = runCatching {
+                val json = JSONObject(jsonText)
+                val kind = json.optString("kind", "").uppercase()
+                val id = json.optString("id", "").trim()
+                if (kind !in setOf("ENTRY", "GOAL", "LOAN") || id.isBlank()) return@runCatching null
+                val exists = when (kind) {
+                    "ENTRY" -> entries.any { it.id == id }
+                    "GOAL" -> goals.any { it.id == id }
+                    else -> loans.any { it.id == id }
+                }
+                if (!exists) return@runCatching null
+                DeleteTarget(kind, id, json.optString("label", "this item"))
+            }.getOrNull()
+            if (parsed != null) return ChatResult(null, null, null, null, null, parsed)
+        }
+
+        if (raw.startsWith("EDIT_ENTRY:")) {
+            val jsonText = raw.removePrefix("EDIT_ENTRY:").trim()
+                .removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
+            val parsed = runCatching {
+                val json = JSONObject(jsonText)
+                val id = json.optString("id", "").trim()
+                val original = entries.find { it.id == id } ?: return@runCatching null
+                val updated = original.copy(
+                    type = runCatching { com.household.finance.data.EntryType.valueOf(json.getString("type")) }.getOrDefault(original.type),
+                    bucket = runCatching { com.household.finance.data.Bucket.valueOf(json.getString("bucket")) }.getOrDefault(original.bucket),
+                    category = json.optString("category", original.category),
+                    amount = json.optDouble("amount", original.amount),
+                    frequency = runCatching { com.household.finance.data.Frequency.valueOf(json.getString("frequency")) }.getOrDefault(original.frequency),
+                    note = json.optString("note", original.note)
+                )
+                EditTarget(id, json.optString("label", "this entry"), updated)
+            }.getOrNull()
+            if (parsed != null) return ChatResult(null, null, null, null, null, null, parsed)
         }
 
         return ChatResult(raw, null)

@@ -22,6 +22,8 @@ import com.household.finance.data.Loan
 import com.household.finance.logic.AnomalyFlag
 import com.household.finance.logic.BalanceUpdate
 import com.household.finance.logic.ChatMessage
+import com.household.finance.logic.DeleteTarget
+import com.household.finance.logic.EditTarget
 import com.household.finance.logic.FinanceAi
 import com.household.finance.ui.theme.GlassSurface
 import com.household.finance.ui.theme.Positive
@@ -43,8 +45,11 @@ fun AiHubScreen(
     onAddGoal: (Goal) -> Unit,
     onDeleteGoal: (String) -> Unit,
     onAddEntry: (Entry) -> Unit,
+    onDeleteEntry: (String) -> Unit,
+    onEditEntry: (Entry) -> Unit,
     onSetAccountBalance: (String, Double) -> Unit,
-    onAddLoan: (lender: String, borrower: String, amount: Double, note: String) -> Unit
+    onAddLoan: (lender: String, borrower: String, amount: Double, note: String) -> Unit,
+    onDeleteLoan: (String) -> Unit
 ) {
     var tab by remember { mutableStateOf(AiTab.CHAT) }
 
@@ -66,7 +71,8 @@ fun AiHubScreen(
         when (tab) {
             AiTab.CHAT -> ChatPane(
                 entries, accounts, goals, loans, emergencyFundAmount, categories, nameMe, nameWife,
-                openAiKey, onAddEntry, onSetAccountBalance, onAddGoal, onAddLoan
+                openAiKey, onAddEntry, onDeleteEntry, onEditEntry, onSetAccountBalance, onAddGoal,
+                onDeleteGoal, onAddLoan, onDeleteLoan
             )
             AiTab.BUDGET -> BudgetPane(entries, openAiKey)
             AiTab.ANOMALIES -> AnomaliesPane(entries, openAiKey)
@@ -96,6 +102,11 @@ private sealed class ChatBubble {
     data class AppliedBalance(val update: BalanceUpdate) : ChatBubble()
     data class AddedGoal(val goal: Goal) : ChatBubble()
     data class AddedLoan(val loan: Loan) : ChatBubble()
+    data class PendingDelete(val target: DeleteTarget) : ChatBubble()
+    data class DidDelete(val label: String) : ChatBubble()
+    data class Discarded(val label: String) : ChatBubble()
+    data class PendingEdit(val target: EditTarget) : ChatBubble()
+    data class DidEdit(val label: String) : ChatBubble()
 }
 
 @Composable
@@ -110,9 +121,13 @@ private fun ChatPane(
     nameWife: String,
     apiKey: String,
     onAddEntry: (Entry) -> Unit,
+    onDeleteEntry: (String) -> Unit,
+    onEditEntry: (Entry) -> Unit,
     onSetAccountBalance: (String, Double) -> Unit,
     onAddGoal: (Goal) -> Unit,
-    onAddLoan: (lender: String, borrower: String, amount: Double, note: String) -> Unit
+    onDeleteGoal: (String) -> Unit,
+    onAddLoan: (lender: String, borrower: String, amount: Double, note: String) -> Unit,
+    onDeleteLoan: (String) -> Unit
 ) {
     var input by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
@@ -154,6 +169,14 @@ private fun ChatPane(
                         bubbles.add(ChatBubble.AddedLoan(r.loanDraft))
                         history.add(ChatMessage("assistant", "IOU recorded."))
                     }
+                    r.deleteTarget != null -> {
+                        bubbles.add(ChatBubble.PendingDelete(r.deleteTarget))
+                        history.add(ChatMessage("assistant", "Awaiting confirmation to delete ${r.deleteTarget.label}."))
+                    }
+                    r.editTarget != null -> {
+                        bubbles.add(ChatBubble.PendingEdit(r.editTarget))
+                        history.add(ChatMessage("assistant", "Awaiting confirmation to change ${r.editTarget.label}."))
+                    }
                     r.replyText != null -> {
                         bubbles.add(ChatBubble.Text("assistant", r.replyText))
                         history.add(ChatMessage("assistant", r.replyText))
@@ -165,6 +188,32 @@ private fun ChatPane(
         }.start()
     }
 
+    fun confirmDelete(bubble: ChatBubble.PendingDelete) {
+        when (bubble.target.kind) {
+            "ENTRY" -> onDeleteEntry(bubble.target.id)
+            "GOAL" -> onDeleteGoal(bubble.target.id)
+            "LOAN" -> onDeleteLoan(bubble.target.id)
+        }
+        val idx = bubbles.indexOf(bubble)
+        if (idx >= 0) bubbles[idx] = ChatBubble.DidDelete(bubble.target.label)
+    }
+
+    fun discardDelete(bubble: ChatBubble.PendingDelete) {
+        val idx = bubbles.indexOf(bubble)
+        if (idx >= 0) bubbles[idx] = ChatBubble.Discarded(bubble.target.label)
+    }
+
+    fun confirmEdit(bubble: ChatBubble.PendingEdit) {
+        onEditEntry(bubble.target.updatedEntry)
+        val idx = bubbles.indexOf(bubble)
+        if (idx >= 0) bubbles[idx] = ChatBubble.DidEdit(bubble.target.label)
+    }
+
+    fun discardEdit(bubble: ChatBubble.PendingEdit) {
+        val idx = bubbles.indexOf(bubble)
+        if (idx >= 0) bubbles[idx] = ChatBubble.Discarded(bubble.target.label)
+    }
+
     Column(Modifier.fillMaxSize()) {
         if (bubbles.isEmpty()) {
             GlassSurface(modifier = Modifier.fillMaxWidth()) {
@@ -172,7 +221,8 @@ private fun ChatPane(
                     "Type \"22k emi\" and it's logged instantly under your name as Personal — say \"joint\" if it's shared. " +
                         "\"22k emi from icici\" also updates that account's balance. \"sbi balance is 50k\" sets a balance directly. " +
                         "\"add goal to buy a car in 2027 jan with down payment 100000\" plans a goal. " +
-                        "\"gave ${nameWife} 2k\" records an IOU. Or just ask a question — I can see all your entries, goals, and IOUs.",
+                        "\"gave ${nameWife} 2k\" records an IOU. \"delete the car goal\" or \"change the EMI amount to 25k\" " +
+                        "will ask you to confirm before doing anything. Or just ask a question — I can see all your entries, goals, and IOUs.",
                     style = MaterialTheme.typography.bodySmall
                 )
             }
@@ -230,6 +280,56 @@ private fun ChatPane(
                                 Text("✅", modifier = Modifier.padding(end = 8.dp))
                                 Text("${bubble.loan.borrower} owes ${bubble.loan.lender} ${formatInr(bubble.loan.amount)}", color = Positive)
                             }
+                        }
+                    }
+                    is ChatBubble.PendingDelete -> {
+                        GlassSurface(modifier = Modifier.fillMaxWidth()) {
+                            Column {
+                                Text("Delete ${bubble.target.label}?", fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.height(10.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button(onClick = { confirmDelete(bubble) }) { Text("Delete") }
+                                    OutlinedButton(onClick = { discardDelete(bubble) }) { Text("Cancel") }
+                                }
+                            }
+                        }
+                    }
+                    is ChatBubble.DidDelete -> {
+                        GlassSurface(modifier = Modifier.fillMaxWidth()) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("🗑️", modifier = Modifier.padding(end = 8.dp))
+                                Text("Deleted ${bubble.label}", color = Warning)
+                            }
+                        }
+                    }
+                    is ChatBubble.PendingEdit -> {
+                        GlassSurface(modifier = Modifier.fillMaxWidth()) {
+                            Column {
+                                Text("Change ${bubble.target.label}?", fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    "${bubble.target.updatedEntry.category} — ${formatInr(bubble.target.updatedEntry.amount)}, ${bubble.target.updatedEntry.bucket}",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                Spacer(Modifier.height(10.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button(onClick = { confirmEdit(bubble) }) { Text("Save Change") }
+                                    OutlinedButton(onClick = { discardEdit(bubble) }) { Text("Cancel") }
+                                }
+                            }
+                        }
+                    }
+                    is ChatBubble.DidEdit -> {
+                        GlassSurface(modifier = Modifier.fillMaxWidth()) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("✅", modifier = Modifier.padding(end = 8.dp))
+                                Text("Updated ${bubble.label}", color = Positive)
+                            }
+                        }
+                    }
+                    is ChatBubble.Discarded -> {
+                        GlassSurface(modifier = Modifier.fillMaxWidth()) {
+                            Text("Discarded — ${bubble.label} left unchanged.", style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }

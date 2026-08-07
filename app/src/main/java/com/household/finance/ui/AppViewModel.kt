@@ -203,4 +203,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun setLoanSettled(id: String, settled: Boolean) {
         viewModelScope.launch { repository.setLoanSettled(id, settled) }
     }
+
+    fun deleteLoan(id: String) {
+        viewModelScope.launch { repository.deleteLoan(id) }
+    }
 }
