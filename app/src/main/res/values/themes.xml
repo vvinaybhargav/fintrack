@@ -4,4 +4,12 @@
         <item name="android:statusBarColor">#0A0C12</item>
         <item name="android:navigationBarColor">#0A0C12</item>
     </style>
+
+    <style name="Theme.QuickAdd" parent="android:Theme.Material.NoActionBar.Translucent">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowIsFloating">false</item>
+        <item name="android:windowAnimationStyle">@android:style/Animation.Dialog</item>
+    </style>
 </resources>

@@ -21,6 +21,7 @@ import com.household.finance.data.Loan
 import com.household.finance.ui.theme.GlassSurface
 import com.household.finance.ui.theme.Positive
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     nameMe: String,
@@ -40,6 +41,7 @@ fun SettingsScreen(
     onChangePin: (String) -> Unit,
     onRenameProfile: (String) -> Unit,
     onResetPartnerPin: () -> Unit,
+    onRenameCategory: (String, String) -> Unit,
     onSaveOpenAiKey: (String) -> Unit,
     onSaveFirebaseConfig: (AppSettings.FirebaseConfig) -> Unit,
     onSaveCategoryLength: (CategoryListLength) -> Unit,
@@ -47,6 +49,11 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     var resetPinConfirming by remember { mutableStateOf(false) }
+    val usedCategories = remember(entries) { entries.map { it.category }.distinct().sorted() }
+    var categoryFrom by remember { mutableStateOf<String?>(null) }
+    var categoryToInput by remember { mutableStateOf("") }
+    var categoryFromExpanded by remember { mutableStateOf(false) }
+    var categoryRenamed by remember { mutableStateOf(false) }
     var salaryDateField by remember(salaryCreditDate) { mutableStateOf(salaryCreditDate?.toString() ?: "") }
     var newPin by remember { mutableStateOf("") }
     var pinSaved by remember { mutableStateOf(false) }
@@ -154,6 +161,46 @@ fun SettingsScreen(
             }
         }
 
+        if (usedCategories.isNotEmpty()) {
+            GlassSurface(modifier = Modifier.fillMaxWidth()) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("MERGE / RENAME CATEGORY", style = MaterialTheme.typography.labelLarge)
+                    Text(
+                        "Re-tags every entry (and any budget limit) under the old category to the new one — use this to merge two categories into one.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    ExposedDropdownMenuBoxCompat(
+                        expanded = categoryFromExpanded,
+                        onExpandedChange = { categoryFromExpanded = it },
+                        selected = categoryFrom ?: "",
+                        label = "From category",
+                        options = usedCategories,
+                        onSelect = { categoryFrom = it; categoryRenamed = false }
+                    )
+                    OutlinedTextField(
+                        value = categoryToInput,
+                        onValueChange = { categoryToInput = it; categoryRenamed = false },
+                        label = { Text("To category (new or existing name)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Button(
+                        onClick = {
+                            val from = categoryFrom ?: return@Button
+                            onRenameCategory(from, categoryToInput.trim())
+                            categoryRenamed = true
+                            categoryFrom = null
+                            categoryToInput = ""
+                        },
+                        enabled = categoryFrom != null && categoryToInput.isNotBlank()
+                    ) { Text("Rename / Merge") }
+                    if (categoryRenamed) {
+                        Text("Done — entries updated.", color = Positive, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        }
+
         GlassSurface(modifier = Modifier.fillMaxWidth()) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("CATEGORY LIST LENGTH", style = MaterialTheme.typography.labelLarge)
@@ -232,6 +279,33 @@ fun SettingsScreen(
         }
 
         Spacer(Modifier.height(32.dp))
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ExposedDropdownMenuBoxCompat(
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    selected: String,
+    label: String,
+    options: List<String>,
+    onSelect: (String) -> Unit
+) {
+    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = onExpandedChange) {
+        OutlinedTextField(
+            value = selected,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(label) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier.fillMaxWidth().menuAnchor()
+        )
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { onExpandedChange(false) }) {
+            options.forEach { option ->
+                DropdownMenuItem(text = { Text(option) }, onClick = { onSelect(option); onExpandedChange(false) })
+            }
+        }
     }
 }
 

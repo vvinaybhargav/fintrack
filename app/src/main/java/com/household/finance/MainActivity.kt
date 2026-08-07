@@ -1,8 +1,11 @@
 package com.household.finance
 
+import android.Manifest
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -30,15 +33,21 @@ import com.household.finance.ui.ProfileGateScreen
 import com.household.finance.ui.SettingsScreen
 import com.household.finance.ui.theme.GlassBackdrop
 import com.household.finance.ui.theme.HouseholdFinanceTheme
+import com.household.finance.widget.LoanReminderScheduler
 import com.household.finance.widget.WidgetUpdater
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
     private val viewModel: AppViewModel by viewModels()
+    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        LoanReminderScheduler.schedule(applicationContext)
         val startRoute = intent?.getStringExtra("start_route")?.takeIf { it in setOf("dashboard", "add", "entries", "ai", "settings") } ?: "dashboard"
         setContent {
             HouseholdFinanceTheme {
@@ -261,6 +270,7 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                     onChangePin = { pin -> viewModel.setProfilePin(nameMe, pin) },
                     onRenameProfile = { newName -> viewModel.renameCurrentProfile(newName) },
                     onResetPartnerPin = { viewModel.resetOtherProfilePin(nameWife) },
+                    onRenameCategory = { old, new -> viewModel.renameCategory(old, new) },
                     onSaveOpenAiKey = { key -> scope.launch { viewModel.settings.saveOpenAiKey(key) } },
                     onSaveFirebaseConfig = { config -> scope.launch { viewModel.settings.saveFirebaseConfig(config) } },
                     onSaveSalaryCreditDate = { day -> viewModel.setSalaryCreditDate(nameMe, day) },

@@ -34,6 +34,9 @@ interface FinanceRepository {
     suspend fun refreshEntries()
     suspend fun addEntry(entry: Entry)
     suspend fun deleteEntry(id: String)
+    /** Re-tags every entry (and any budget limit) from [oldCategory] to [newCategory] - lets two
+     *  categories be merged into one after the fact, batched like account/profile renames. */
+    suspend fun renameCategory(oldCategory: String, newCategory: String)
     /** [owner] blank observes the shared/joint fund; a profile name observes that profile's personal fund. */
     fun observeEmergencyFund(owner: String = ""): Flow<EmergencyFund>
     suspend fun setEmergencyFund(amount: Double, owner: String = "")
@@ -169,6 +172,20 @@ class FirestoreFinanceRepository(private val context: Context) : FinanceReposito
 
     override suspend fun deleteEntry(id: String) {
         entriesCollection()?.document(id)?.delete()
+    }
+
+    override suspend fun renameCategory(oldCategory: String, newCategory: String) {
+        val db = firestore ?: return
+        renameFieldInCollection(db, entriesCollection(), "category", oldCategory, newCategory)
+        val budgets = budgetsDoc() ?: return
+        val snapshot = budgets.get().awaitTask()
+        val existingLimit = (snapshot.get(oldCategory) as? Number)?.toDouble()
+        if (existingLimit != null) {
+            budgets.set(
+                mapOf(newCategory to existingLimit, oldCategory to FieldValue.delete()),
+                SetOptions.merge()
+            ).awaitTask()
+        }
     }
 
     override fun observeEmergencyFund(owner: String): Flow<EmergencyFund> = callbackFlow {

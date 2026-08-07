@@ -217,6 +217,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun renameCategory(oldCategory: String, newCategory: String) {
+        val trimmed = newCategory.trim()
+        if (trimmed.isBlank() || trimmed.equals(oldCategory, ignoreCase = true)) return
+        viewModelScope.launch { repository.renameCategory(oldCategory, trimmed) }
+    }
+
     fun refreshEntries() {
         viewModelScope.launch {
             _refreshing.value = true

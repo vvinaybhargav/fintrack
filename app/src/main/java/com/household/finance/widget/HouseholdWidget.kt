@@ -32,8 +32,10 @@ import androidx.glance.state.PreferencesGlanceStateDefinition
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
+import androidx.glance.layout.Box
 import androidx.glance.unit.ColorProvider
 import com.household.finance.MainActivity
+import com.household.finance.QuickAddActivity
 import com.household.finance.data.Account
 import java.util.Locale
 
@@ -46,6 +48,7 @@ private val WidgetBackground = ColorProvider(Color(0xFF12141C))
 private val WidgetTextPrimary = ColorProvider(Color(0xFFF3F3F7))
 private val WidgetTextSecondary = ColorProvider(Color(0xFFA5A8B8))
 private val WidgetAccent = ColorProvider(Color(0xFF8B7CF6))
+private val WidgetSearchBar = ColorProvider(Color(0xFF1C1F2B))
 
 private fun formatInrShort(value: Double): String {
     val absVal = Math.abs(value)
@@ -99,9 +102,19 @@ class HouseholdWidget : GlanceAppWidget() {
                 Text("Open the app to see balances", style = TextStyle(color = WidgetTextSecondary, fontSize = 11.sp))
             }
             Spacer(GlanceModifier.height(8.dp))
+            Box(
+                modifier = GlanceModifier
+                    .fillMaxWidth()
+                    .background(WidgetSearchBar)
+                    .padding(horizontal = 10.dp, vertical = 8.dp)
+                    .clickable(actionStartActivity<QuickAddActivity>())
+            ) {
+                Text("Tap to log an entry…", style = TextStyle(color = WidgetTextSecondary, fontSize = 13.sp))
+            }
+            Spacer(GlanceModifier.height(6.dp))
             Text(
-                "+ Add entry",
-                style = TextStyle(color = WidgetAccent, fontWeight = FontWeight.Bold, fontSize = 13.sp),
+                "Open app to add with more detail",
+                style = TextStyle(color = WidgetAccent, fontWeight = FontWeight.Bold, fontSize = 11.sp),
                 modifier = GlanceModifier.clickable(
                     actionStartActivity<MainActivity>(parameters = actionParametersOf(START_ROUTE_KEY to "add"))
                 )
