@@ -11,6 +11,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -115,7 +117,8 @@ fun DashboardScreen(
     onAddActiveLoan: (ActiveLoan) -> Unit,
     onDeleteActiveLoan: (String) -> Unit,
     onUpdateActiveLoanPrepayment: (String, Double) -> Unit,
-    onQuickAddEntry: (Entry) -> Unit = {}
+    onQuickAddEntry: (Entry) -> Unit = {},
+    onDeleteCommitmentTemplate: (String) -> Unit = {}
 ) {
     val commitmentsChecklist = remember(entries, nameMe) {
         Calculations.getCommitmentsChecklist(entries, nameMe)
@@ -228,15 +231,22 @@ fun DashboardScreen(
                             ),
                             modifier = Modifier.weight(1f)
                         )
-                        IconButton(onClick = {
-                            if (quickAddText.isNotBlank()) {
-                                val entry = SmartAddParser.parseRuleBased(quickAddText, nameMe, "", categories)
-                                onQuickAddEntry(entry)
-                                quickAddConfirm = "Logged ${entry.category} — ${formatInr(entry.amount)}"
-                                quickAddText = ""
-                            }
-                        }) {
-                            Icon(Icons.Filled.Send, contentDescription = "Add", tint = Violet)
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(Violet)
+                                .clickable {
+                                    if (quickAddText.isNotBlank()) {
+                                        val entry = SmartAddParser.parseRuleBased(quickAddText, nameMe, "", categories)
+                                        onQuickAddEntry(entry)
+                                        quickAddConfirm = "Logged ${entry.category} — ${formatInr(entry.amount)}"
+                                        quickAddText = ""
+                                    }
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Filled.Send, contentDescription = "Add", tint = Color.White, modifier = Modifier.size(15.dp))
                         }
                     }
                 }
@@ -280,7 +290,7 @@ fun DashboardScreen(
 
         // --- Accounts ---
         if (accounts.isNotEmpty()) {
-            item { SectionLabel(Icons.Filled.AccountBalanceWallet, "ACCOUNTS") }
+            item { SectionLabel(Icons.Filled.AccountBalanceWallet, "Accounts") }
             items(accounts, key = { it.name }) { account ->
                 AccountRow(
                     account = account,
@@ -315,7 +325,7 @@ fun DashboardScreen(
             item {
                 GlassSurface(modifier = Modifier.fillMaxWidth()) {
                     Column {
-                        SectionLabel(Icons.Filled.PieChart, "CATEGORY BUDGETS")
+                        SectionLabel(Icons.Filled.PieChart, "Category budgets")
                         Spacer(Modifier.height(12.dp))
                         categoriesWithBudgetsOrSpend.forEach { category ->
                             val spent = categorySpends[category] ?: 0.0
@@ -377,7 +387,7 @@ fun DashboardScreen(
             GlassSurface(modifier = Modifier.fillMaxWidth()) {
                 Column {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        SectionLabel(Icons.Filled.AccountBalanceWallet, "LOANS")
+                        SectionLabel(Icons.Filled.AccountBalanceWallet, "Loans")
                         TextButton(onClick = { showingAddLoan = !showingAddLoan }) { Text(if (showingAddLoan) "Close" else "+ Add") }
                     }
                     Spacer(Modifier.height(10.dp))
@@ -406,7 +416,7 @@ fun DashboardScreen(
             GlassSurface(modifier = Modifier.fillMaxWidth()) {
                 Column {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        SectionLabel(Icons.Filled.CreditCard, "CREDIT CARDS")
+                        SectionLabel(Icons.Filled.CreditCard, "Credit cards")
                         TextButton(onClick = { showingAddCard = !showingAddCard }) { Text(if (showingAddCard) "Close" else "+ Add") }
                     }
                     Spacer(Modifier.height(10.dp))
@@ -458,7 +468,7 @@ fun DashboardScreen(
             item {
                 GlassSurface(modifier = Modifier.fillMaxWidth()) {
                     Column {
-                        SectionLabel(Icons.Filled.Flag, "GOALS")
+                        SectionLabel(Icons.Filled.Flag, "Goals")
                         Spacer(Modifier.height(10.dp))
                         activeGoals.forEach { goal ->
                             GoalRow(
@@ -494,7 +504,7 @@ fun DashboardScreen(
             item {
                 GlassSurface(modifier = Modifier.fillMaxWidth()) {
                     Column {
-                        SectionLabel(Icons.Filled.Repeat, "BILLS")
+                        SectionLabel(Icons.Filled.Repeat, "Bills")
                         Spacer(Modifier.height(10.dp))
                         BillsSection(bills = otherBills, onAddBill = onAddBill, onDeleteBill = onDeleteBill, onMarkPaid = onMarkBillPaid)
                     }
@@ -506,7 +516,7 @@ fun DashboardScreen(
         item {
             GlassSurface(modifier = Modifier.fillMaxWidth()) {
                 Column {
-                    SectionLabel(Icons.Filled.Repeat, "CONFIRM THIS MONTH")
+                    SectionLabel(Icons.Filled.Repeat, "Confirm this month")
                     Text(
                         "Recurring savings & investments — log them once they've gone through.",
                         style = MaterialTheme.typography.bodySmall,
@@ -518,7 +528,7 @@ fun DashboardScreen(
                         Button(onClick = onSeedCommitments) { Text("Set up commitments checklist") }
                     } else {
                         commitmentsChecklist.forEach { item ->
-                            CommitmentRow(item, onCompleteCommitment, onUndoCommitment)
+                            CommitmentRow(item, onCompleteCommitment, onUndoCommitment, onDeleteCommitmentTemplate)
                         }
                     }
                 }
@@ -550,7 +560,7 @@ fun DashboardScreen(
             item {
                 GlassSurface(modifier = Modifier.fillMaxWidth()) {
                     Column {
-                        SectionLabel(Icons.Filled.Shield, "EMERGENCY FUND")
+                        SectionLabel(Icons.Filled.Shield, "Emergency fund")
                         Spacer(Modifier.height(10.dp))
                         Text("${formatInr(emergencyFundAmount)} of ${formatInr(target)} target (6× monthly expenses)", style = MaterialTheme.typography.bodySmall)
                         Spacer(Modifier.height(10.dp))
@@ -575,7 +585,7 @@ fun DashboardScreen(
                 item {
                     GlassSurface(modifier = Modifier.fillMaxWidth()) {
                         Column {
-                            SectionLabel(Icons.Filled.Repeat, "EMIS & RECURRING — MONTHLY → YEARLY")
+                            SectionLabel(Icons.Filled.Repeat, "EMIs & recurring")
                             Spacer(Modifier.height(12.dp))
                             recurring.forEach { item ->
                                 Row(
@@ -606,7 +616,7 @@ fun DashboardScreen(
                 item {
                     GlassSurface(modifier = Modifier.fillMaxWidth()) {
                         Column {
-                            SectionLabel(Icons.Filled.VerifiedUser, "POLICIES & INVESTMENTS")
+                            SectionLabel(Icons.Filled.VerifiedUser, "Policies & investments")
                             Spacer(Modifier.height(10.dp))
                             policies.forEach { p ->
                                 val status = Calculations.policyStatus(p)
@@ -628,7 +638,7 @@ fun DashboardScreen(
                 item {
                     GlassSurface(modifier = Modifier.fillMaxWidth()) {
                         Column {
-                            SectionLabel(Icons.Filled.PieChart, "TRENDS — LEFT OVER BY MONTH")
+                            SectionLabel(Icons.Filled.PieChart, "Trends")
                             Spacer(Modifier.height(12.dp))
                             val maxAbs = trend.maxOf { Math.abs(it.second.surplus) }.coerceAtLeast(1.0)
                             trend.forEach { (label, monthSummary) ->
@@ -654,7 +664,7 @@ fun DashboardScreen(
                 item {
                     GlassSurface(modifier = Modifier.fillMaxWidth()) {
                         Column {
-                            SectionLabel(Icons.Filled.Lightbulb, "INSIGHTS")
+                            SectionLabel(Icons.Filled.Lightbulb, "Insights")
                             Spacer(Modifier.height(10.dp))
                             nudges.forEach { Text("• $it", modifier = Modifier.padding(vertical = 2.dp)) }
                         }
@@ -723,8 +733,8 @@ private fun AccountRow(account: Account, onSave: (Double) -> Unit, onRename: (St
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(formatInr(account.balance), fontWeight = FontWeight.Bold, color = if (account.balance < 0) Warning else Positive)
-                    IconButton(onClick = { editing = true }) {
-                        Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Edit account")
+                    IconButton(onClick = { editing = true }, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Filled.Edit, contentDescription = "Edit account", tint = Violet, modifier = Modifier.size(16.dp))
                     }
                 }
             }
@@ -936,14 +946,10 @@ private fun AddBillForm(onAdd: (Bill) -> Unit, onCancel: () -> Unit) {
     }
 }
 
-/** Small icon + all-caps label used for every card's section heading, for quick visual scanning. */
+/** Plain bold section heading, matching the design import's h5 style (no icon, no all-caps). */
 @Composable
 private fun SectionLabel(icon: ImageVector, text: String) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, contentDescription = null, tint = Violet, modifier = Modifier.size(15.dp))
-        Spacer(Modifier.width(6.dp))
-        Text(text, style = MaterialTheme.typography.labelLarge)
-    }
+    Text(text, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
 }
 
 @Composable
@@ -1041,29 +1047,59 @@ private fun GoalContributionForm(onAdd: (Double) -> Unit, onCancel: () -> Unit) 
 }
 
 @Composable
-private fun CommitmentRow(item: Calculations.CommitmentChecklistItem, onComplete: (Entry) -> Unit, onUndo: (String) -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(item.template.note.ifBlank { item.template.category }, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
-            Text(
-                "${item.template.person} · ${formatInr(item.monthlyAmount)}/mo",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(Modifier.height(4.dp))
-            AssistChip(onClick = {}, label = { Text(item.template.category, style = MaterialTheme.typography.labelSmall) })
-        }
-        if (item.isCompletedThisMonth) {
-            Row {
-                TextButton(onClick = { item.completedEntryId?.let { onUndo(it) } }) { Text("Done ✓") }
+private fun CommitmentRow(
+    item: Calculations.CommitmentChecklistItem,
+    onComplete: (Entry) -> Unit,
+    onUndo: (String) -> Unit,
+    onDelete: (String) -> Unit
+) {
+    var confirmingDelete by remember(item.template.id) { mutableStateOf(false) }
+
+    Column(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
+        Row(horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.weight(1f)) {
+                Text(item.template.note.ifBlank { item.template.category }, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    "${item.template.person} · ${formatInr(item.monthlyAmount)}/mo",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(6.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(Color(0x1AFFFFFF))
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        if (item.template.frequency == Frequency.ANNUAL) "Yearly" else "Recurring",
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
             }
-        } else {
-            Button(onClick = { onComplete(item.template) }) { Text("Log") }
+            Spacer(Modifier.width(10.dp))
+            if (item.isCompletedThisMonth) {
+                TextButton(onClick = { item.completedEntryId?.let { onUndo(it) } }) { Text("Done ✓") }
+            } else {
+                Button(
+                    onClick = { onComplete(item.template) },
+                    shape = RoundedCornerShape(999.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Violet)
+                ) { Text("Confirm") }
+            }
+            IconButton(onClick = { confirmingDelete = true }, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Filled.Delete, contentDescription = "Remove commitment", tint = Violet, modifier = Modifier.size(16.dp))
+            }
         }
+        if (confirmingDelete) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 6.dp)) {
+                Text("Stop tracking this commitment?", style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.width(8.dp))
+                TextButton(onClick = { onDelete(item.template.id); confirmingDelete = false }) { Text("Remove") }
+                TextButton(onClick = { confirmingDelete = false }) { Text("Cancel") }
+            }
+        }
+        Divider(Modifier.padding(top = 10.dp), color = Color(0x14FFFFFF))
     }
 }
 
@@ -1090,7 +1126,7 @@ private fun ActiveLoanRow(loan: ActiveLoan, onDelete: () -> Unit, onSave: (Activ
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(formatInr(loan.monthlyEmi), fontWeight = FontWeight.Bold)
-                        IconButton(onClick = { editing = true }) { Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Edit loan") }
+                        IconButton(onClick = { editing = true }, modifier = Modifier.size(32.dp)) { Icon(Icons.Filled.Edit, contentDescription = "Edit loan", tint = Violet, modifier = Modifier.size(16.dp)) }
                     }
                 }
                 if (expanded) {

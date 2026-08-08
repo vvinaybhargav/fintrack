@@ -10,7 +10,6 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.action.ActionParameters
-import androidx.glance.action.actionParametersOf
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
@@ -23,6 +22,7 @@ import androidx.glance.currentState
 import androidx.glance.layout.Column
 import androidx.glance.layout.Row
 import androidx.glance.layout.Spacer
+import androidx.glance.layout.defaultWeight
 import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
@@ -34,7 +34,6 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.layout.Box
 import androidx.glance.unit.ColorProvider
-import com.household.finance.MainActivity
 import com.household.finance.QuickAddActivity
 import com.household.finance.data.Account
 import java.util.Locale
@@ -44,11 +43,11 @@ private val KEY_ACCOUNTS = stringPreferencesKey("accounts") // "NAME:balance|NAM
 val START_ROUTE_KEY = ActionParameters.Key<String>("start_route")
 
 // Widget is intentionally single-themed (matches the app's dark glass look regardless of system theme).
-private val WidgetBackground = ColorProvider(Color(0xFF12141C))
-private val WidgetTextPrimary = ColorProvider(Color(0xFFF3F3F7))
-private val WidgetTextSecondary = ColorProvider(Color(0xFFA5A8B8))
-private val WidgetAccent = ColorProvider(Color(0xFF8B7CF6))
-private val WidgetSearchBar = ColorProvider(Color(0xFF1C1F2B))
+private val WidgetBackground = ColorProvider(Color(0xFF120F18))
+private val WidgetTextPrimary = ColorProvider(Color(0xFFF5F3FA))
+private val WidgetTextSecondary = ColorProvider(Color(0xFFACA6BD))
+private val WidgetAccent = ColorProvider(Color(0xFF9B6BFF))
+private val WidgetSearchBar = ColorProvider(Color(0xFF1C1826))
 
 private fun formatInrShort(value: Double): String {
     val absVal = Math.abs(value)
@@ -102,22 +101,31 @@ class HouseholdWidget : GlanceAppWidget() {
                 Text("Open the app to see balances", style = TextStyle(color = WidgetTextSecondary, fontSize = 11.sp))
             }
             Spacer(GlanceModifier.height(8.dp))
-            Box(
+            Row(
                 modifier = GlanceModifier
                     .fillMaxWidth()
                     .background(WidgetSearchBar)
                     .padding(horizontal = 10.dp, vertical = 8.dp)
                     .clickable(actionStartActivity<QuickAddActivity>())
             ) {
-                Text("Tap to log an entry…", style = TextStyle(color = WidgetTextSecondary, fontSize = 13.sp))
-            }
-            Spacer(GlanceModifier.height(6.dp))
-            Text(
-                "Open app to add with more detail",
-                style = TextStyle(color = WidgetAccent, fontWeight = FontWeight.Bold, fontSize = 11.sp),
-                modifier = GlanceModifier.clickable(
-                    actionStartActivity<MainActivity>(parameters = actionParametersOf(START_ROUTE_KEY to "add"))
+                Box(
+                    modifier = GlanceModifier.width(22.dp).height(22.dp).background(WidgetAccent),
+                    contentAlignment = androidx.glance.layout.Alignment.Center
+                ) {
+                    Text("F", style = TextStyle(color = ColorProvider(Color.White), fontWeight = FontWeight.Bold, fontSize = 11.sp))
+                }
+                Spacer(GlanceModifier.width(8.dp))
+                Text(
+                    "Add a transaction… e.g. 22k EMI",
+                    style = TextStyle(color = WidgetTextSecondary, fontSize = 13.sp),
+                    modifier = GlanceModifier.defaultWeight()
                 )
+            }
+            Spacer(GlanceModifier.height(4.dp))
+            Text(
+                "FINTRACK",
+                style = TextStyle(color = WidgetTextSecondary, fontSize = 10.sp),
+                modifier = GlanceModifier.fillMaxWidth()
             )
         }
     }
