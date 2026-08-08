@@ -1,13 +1,16 @@
 package com.household.finance.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -16,11 +19,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.household.finance.data.Bucket
 import com.household.finance.data.Entry
 import com.household.finance.ui.theme.GlassSurface
+import com.household.finance.ui.theme.InkRaised
+import com.household.finance.ui.theme.Violet
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -61,13 +68,13 @@ fun EntriesScreen(
         }
     }
 
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+            modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Entries", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("Transactions", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             IconButton(onClick = onRefresh, enabled = !refreshing) {
                 if (refreshing) {
                     CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
@@ -78,34 +85,41 @@ fun EntriesScreen(
         }
 
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            Modifier
+                .fillMaxWidth()
+                .background(InkRaised, RoundedCornerShape(999.dp))
+                .padding(4.dp)
         ) {
-            FilterChip(
-                selected = view == EntriesView.PERSONAL,
-                onClick = { view = EntriesView.PERSONAL },
-                label = { Text(nameMe) },
-                modifier = Modifier.weight(1f)
-            )
-            FilterChip(
-                selected = view == EntriesView.JOINT,
-                onClick = { view = EntriesView.JOINT },
-                label = { Text("Joint") },
-                modifier = Modifier.weight(1f)
-            )
+            EntriesPillOption(text = nameMe, selected = view == EntriesView.PERSONAL, modifier = Modifier.weight(1f)) { view = EntriesView.PERSONAL }
+            EntriesPillOption(text = "Joint", selected = view == EntriesView.JOINT, modifier = Modifier.weight(1f)) { view = EntriesView.JOINT }
         }
 
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = { searchQuery = it },
-            placeholder = { Text("Search category or note…") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
-        )
+        Spacer(Modifier.height(12.dp))
+
+        GlassSurface(cornerRadius = 999, contentPadding = 8, modifier = Modifier.fillMaxWidth()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                TextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("Search category or note…") },
+                    singleLine = true,
+                    colors = TextFieldDefaults.colors(
+                        unfocusedContainerColor = Color.Transparent,
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        focusedIndicatorColor = Color.Transparent
+                    ),
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+        Spacer(Modifier.height(8.dp))
 
         if (availableMonths.size > 1 || availableCategories.size > 1) {
             LazyRow(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 item {
@@ -135,7 +149,7 @@ fun EntriesScreen(
         }
 
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp),
+            modifier = Modifier.fillMaxSize().padding(vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
             contentPadding = PaddingValues(bottom = 16.dp)
         ) {
@@ -166,5 +180,24 @@ fun EntriesScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun EntriesPillOption(text: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(if (selected) Violet else Color.Transparent)
+            .clickable { onClick() }
+            .padding(vertical = 9.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text,
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.SemiBold,
+            color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
