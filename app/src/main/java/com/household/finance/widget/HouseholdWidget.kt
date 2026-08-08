@@ -22,7 +22,6 @@ import androidx.glance.currentState
 import androidx.glance.layout.Column
 import androidx.glance.layout.Row
 import androidx.glance.layout.Spacer
-import androidx.glance.layout.defaultWeight
 import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
@@ -117,8 +116,7 @@ class HouseholdWidget : GlanceAppWidget() {
                 Spacer(GlanceModifier.width(8.dp))
                 Text(
                     "Add a transaction… e.g. 22k EMI",
-                    style = TextStyle(color = WidgetTextSecondary, fontSize = 13.sp),
-                    modifier = GlanceModifier.defaultWeight()
+                    style = TextStyle(color = WidgetTextSecondary, fontSize = 13.sp)
                 )
             }
             Spacer(GlanceModifier.height(4.dp))
