@@ -159,6 +159,9 @@ fun DashboardScreen(
         }
     }
     val summary = remember(filteredEntries) { Calculations.summarize(filteredEntries) }
+    val totalInvestment = remember(filteredEntries) {
+        filteredEntries.filter { it.category in INVESTMENT_CATEGORIES }.sumOf { it.monthlyAmount }
+    }
 
     val target = Calculations.emergencyFundTarget(summary.totalExpenses)
     val efProgress = if (target > 0) (emergencyFundAmount / target).coerceIn(0.0, 1.0) else 0.0
@@ -313,7 +316,7 @@ fun DashboardScreen(
                         }
                         Row(Modifier.fillMaxWidth()) {
                             StatCell("SAVINGS", formatInr(summary.totalSavings), Cyan, Modifier.weight(1f))
-                            StatCell("LEFT OVER", formatInr(summary.surplus), if (summary.surplus >= 0) Positive else Warning, Modifier.weight(1f))
+                            StatCell("INVESTMENT", formatInr(totalInvestment), Violet, Modifier.weight(1f))
                         }
                     }
                 }
@@ -780,10 +783,16 @@ private fun CreditCardRow(card: Bill, onDelete: () -> Unit, onPay: () -> Unit) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column {
                     Text(card.name, fontWeight = FontWeight.SemiBold)
-                    Text("Due ${card.dueDate}" + (card.owner.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""), style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        (card.owner.takeIf { it.isNotBlank() }?.let { "$it · " } ?: "") + "Due ${card.dueDate}",
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(formatInr(card.amount), fontWeight = FontWeight.Bold)
+                    Text(
+                        if (limit != null) "${formatInr(card.amount)} / ${formatInr(limit)}" else formatInr(card.amount),
+                        fontWeight = FontWeight.Bold
+                    )
                     if (confirmingDelete) {
                         TextButton(onClick = onDelete) { Text("Confirm") }
                         TextButton(onClick = { confirmingDelete = false }) { Text("No") }
@@ -810,7 +819,7 @@ private fun CreditCardRow(card: Bill, onDelete: () -> Unit, onPay: () -> Unit) {
                         TextButton(onClick = { confirmingPaid = false }) { Text("No") }
                     }
                 } else {
-                    TextButton(onClick = { confirmingPaid = true }) { Text("Pay") }
+                    TextButton(onClick = { confirmingPaid = true }) { Text("Pay bill") }
                 }
             }
         }
@@ -1047,6 +1056,15 @@ private fun GoalContributionForm(onAdd: (Double) -> Unit, onCancel: () -> Unit) 
 }
 
 @Composable
+/** Badge label + tint for a commitment's category — Investment for LIC/PPF/SIP-style holdings,
+ *  Savings for RD/FD, Recurring for everything else (EMI, insurance, subscriptions, etc.). */
+private fun commitmentBadge(category: String): Pair<String, Color> = when {
+    category in setOf("LIC", "PPF", "SIP", "Mutual Funds", "Stocks", "Gold") -> "Investment" to Cyan
+    category in setOf("RD", "FD") -> "Savings" to Positive
+    else -> "Recurring" to Color(0xFFDADADA)
+}
+
+@Composable
 private fun CommitmentRow(
     item: Calculations.CommitmentChecklistItem,
     onComplete: (Entry) -> Unit,
@@ -1055,10 +1073,12 @@ private fun CommitmentRow(
 ) {
     var confirmingDelete by remember(item.template.id) { mutableStateOf(false) }
 
+    val (badgeText, badgeTint) = commitmentBadge(item.template.category)
+
     Column(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
         Row(horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.weight(1f)) {
-                Text(item.template.note.ifBlank { item.template.category }, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
+                Text(item.template.category, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
                 Text(
                     "${item.template.person} · ${formatInr(item.monthlyAmount)}/mo",
                     style = MaterialTheme.typography.bodySmall,
@@ -1068,13 +1088,10 @@ private fun CommitmentRow(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(999.dp))
-                        .background(Color(0x1AFFFFFF))
+                        .background(badgeTint.copy(alpha = 0.18f))
                         .padding(horizontal = 10.dp, vertical = 4.dp)
                 ) {
-                    Text(
-                        if (item.template.frequency == Frequency.ANNUAL) "Yearly" else "Recurring",
-                        style = MaterialTheme.typography.labelSmall
-                    )
+                    Text(badgeText, style = MaterialTheme.typography.labelSmall, color = badgeTint)
                 }
             }
             Spacer(Modifier.width(10.dp))

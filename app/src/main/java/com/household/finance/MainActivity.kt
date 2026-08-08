@@ -10,7 +10,7 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
@@ -61,12 +61,12 @@ class MainActivity : ComponentActivity() {
 
 private data class Tab(val route: String, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector)
 
-// "add" is intentionally not a tab: entries are added only via AI > Chat. The route still
-// exists in the NavHost below, reached only when editing an existing entry from the Entries list.
+// Matches the design import's bottom nav exactly: Home / Transactions / Add / Settings.
+// AI chat is still reachable (from a header icon on Home) but isn't its own tab, per the design.
 private val tabs = listOf(
-    Tab("dashboard", "Dashboard", Icons.Filled.Home),
-    Tab("entries", "Entries", Icons.Filled.List),
-    Tab("ai", "AI", Icons.Filled.AutoAwesome),
+    Tab("dashboard", "Home", Icons.Filled.Home),
+    Tab("entries", "Transactions", Icons.Filled.List),
+    Tab("add", "Add", Icons.Filled.Add),
     Tab("settings", "Settings", Icons.Filled.Settings)
 )
 
@@ -232,7 +232,10 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                     categoryLength = categoryLength,
                     editingEntry = editingEntry,
                     onSave = { viewModel.addEntry(it) },
-                    onCancelEdit = { editingEntry = null }
+                    onCancelEdit = { editingEntry = null },
+                    onAddBill = { viewModel.addBill(it) },
+                    onAddActiveLoan = { viewModel.addActiveLoan(it) },
+                    onAddAccount = { name, owner, balance -> viewModel.setAccountBalance(name, balance) }
                 )
             }
             composable("entries") {
