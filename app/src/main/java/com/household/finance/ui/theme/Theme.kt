@@ -15,28 +15,27 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
-// A richer near-black ground with a single mint primary and a soft red-orange alert —
-// violet survives only as a faint gradient detail, never as a competing accent.
-val InkBase = Color(0xFF0A0A0F)
-val InkRaised = Color(0xFF14141C)
-val Violet = Color(0xFF8B7CF6) // gradient-detail only, kept faint via low alpha where used
-val Cyan = Color(0xFF2FE0C0)   // primary accent (mint)
-val GlassStroke = Color(0x14FFFFFF) // ~8% white
-val GlassFillTop = Color(0x14FFFFFF)
+// Violet-tinted near-black ground (matches the FinTrack design import's phone-frame tokens),
+// a saturated violet primary, and a teal secondary/positive accent.
+val InkBase = Color(0xFF120F18)
+val InkRaised = Color(0xFF1C1826)
+val InkSurface2 = Color(0xFF2A2436)
+val Violet = Color(0xFF9B6BFF)  // primary accent
+val Cyan = Color(0xFF3FDFC0)    // secondary accent / positive
+val GlassStroke = Color(0x1EFFFFFF)
+val GlassFillTop = Color(0x16FFFFFF)
 val GlassFillBottom = Color(0x08FFFFFF)
-val TextPrimary = Color(0xFFF5F6F8)
-val TextSecondary = Color(0xFFA7ACBD)
-val Positive = Color(0xFF2FE0C0)
+val TextPrimary = Color(0xFFF5F3FA)
+val TextSecondary = Color(0xFFACA6BD)
+val Positive = Color(0xFF3FDFC0)
 val Warning = Color(0xFFF2795D)
 val Danger = Color(0xFFF2795D)
 
-// Mint is the single primary accent (drives default Button/FilterChip fills); violet is demoted
-// to secondary so it only ever shows up as a faint gradient detail, never a competing accent.
 private val HouseholdDarkScheme = darkColorScheme(
-    primary = Cyan,
-    onPrimary = Color(0xFF04211C),
-    secondary = Violet,
-    onSecondary = Color(0xFF120E2A),
+    primary = Violet,
+    onPrimary = Color(0xFFFFFFFF),
+    secondary = Cyan,
+    onSecondary = Color(0xFF04211C),
     background = InkBase,
     onBackground = TextPrimary,
     surface = InkRaised,

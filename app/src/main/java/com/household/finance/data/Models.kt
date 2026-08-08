@@ -207,6 +207,10 @@ data class Bill(
     val type: BillType = BillType.OTHER,
     /** If true, marking paid advances dueDate by a month instead of deleting the bill. */
     val recurring: Boolean = true,
+    /** Credit card only: the card's total limit, for a balance/limit progress bar. */
+    val creditLimit: Double? = null,
+    /** Credit card only: the minimum amount due, shown alongside the full balance. */
+    val minDue: Double? = null,
     val owner: String = "",
     val createdAt: Long = System.currentTimeMillis()
 ) {
@@ -218,6 +222,8 @@ data class Bill(
         "toAccountName" to toAccountName,
         "type" to type.name,
         "recurring" to recurring,
+        "creditLimit" to creditLimit,
+        "minDue" to minDue,
         "owner" to owner,
         "createdAt" to createdAt
     )
@@ -232,6 +238,8 @@ data class Bill(
             toAccountName = map["toAccountName"] as? String,
             type = runCatching { BillType.valueOf(map["type"] as String) }.getOrDefault(BillType.OTHER),
             recurring = map["recurring"] as? Boolean ?: true,
+            creditLimit = (map["creditLimit"] as? Number)?.toDouble(),
+            minDue = (map["minDue"] as? Number)?.toDouble(),
             owner = map["owner"] as? String ?: "",
             createdAt = (map["createdAt"] as? Number)?.toLong() ?: 0L
         )

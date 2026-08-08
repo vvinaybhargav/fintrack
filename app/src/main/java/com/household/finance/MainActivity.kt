@@ -216,7 +216,8 @@ private fun AppRoot(viewModel: AppViewModel, startRoute: String) {
                     onSeedCommitments = { viewModel.seedDefaultCommitments() },
                     onAddActiveLoan = { loan -> viewModel.addActiveLoan(loan) },
                     onDeleteActiveLoan = { id -> viewModel.deleteActiveLoan(id) },
-                    onUpdateActiveLoanPrepayment = { id, amount -> viewModel.updateActiveLoanPrepayment(id, amount) }
+                    onUpdateActiveLoanPrepayment = { id, amount -> viewModel.updateActiveLoanPrepayment(id, amount) },
+                    onQuickAddEntry = { entry -> viewModel.addEntry(entry) }
                 )
             }
             composable("add") {
